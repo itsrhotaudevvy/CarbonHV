@@ -35,3 +35,13 @@ If required guest artifacts, renderer deployment, or AVF renderer transport are 
 The physical path does not accept host-only Android rendering as guest proof. `guest_gpu_transport=virtio-gpu`, a guest workload result, renderer identity, presentation counts, copy inventory, and a host-GPU proof source all come from the VM/renderer run.
 
 The minimal harness can establish basic Vulkan/native-buffer evidence, but it always leaves `gpu.qualified=false`. Full qualification additionally requires the real Android-derived and Ubuntu Touch/Lomiri guests plus sustained testing.
+
+The sustained policy is documented in `workloads/README.md`. Its entrypoint is:
+
+```bash
+qualification/gpu/run-sustained.sh --adb <serial> --minutes 30
+```
+
+The Pixel 7a profile in `profiles/pixel-7a-mali-g710.toml` remains `uncalibrated` until both real starter guests complete the mandatory workload set and 30-minute physical baseline. Numeric thresholds are deliberately absent before that measurement. A blocked run records `unknown`/`not-run` metrics and keeps `gpu.sustained=false`, `gpu.qualified=false`, and `qualification=EXPERIMENTAL`.
+
+`test-sustained.sh` exercises duration, workload, threshold, and fixture-evidence gates without granting physical capability state.

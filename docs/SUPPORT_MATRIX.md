@@ -35,6 +35,8 @@ Status vocabulary:
 | Mali renderer adapter | Verified source/build | Pinned crosvm/Rutabaga/gfxstream profile; feature-gated Rutabaga adapter compiles; broker accepts only registered renderer entry points | `gfxstream_backend` is not yet built/deployed on the phone and no AVF resource transport is wired |
 | Android GPU probe + presentation boundary | Verified build / physical lifecycle observed | ARM64 JNI library builds; generation/queue tests pass; debug APK cold-launched on Pixel 7a and survived rotate, background/foreground, and activity-process recreation without fatal/native errors | No guest-produced `AHardwareBuffer` has reached the physical presentation path yet |
 | GPU proof harness | Verified | Positive/no-proof fixtures enforce hardware-evidence gating; physical Pixel report records blocked bring-up without promoting capabilities | Needs real guest/renderer evidence, then sustained and both-guest qualification |
+| Starter guest graphics contracts | Verified source contract | Android-derived CVD1 requires virtual GLES/Vulkan/native-buffer/explicit-sync; Ubuntu Touch requires GLES/native-buffer/explicit-sync through Mesa/Mir on the same `virtio-gpu` ABI | Real guest builds and runtime renderer identity still unverified |
+| Sustained GPU qualification policy | Verified policy / physical run blocked | 30-minute workload classes, metric definitions, threshold evaluator, and fail-closed fixture tests are present; Pixel profile has no invented thresholds | Requires both real guests, guest-produced frames, recovery injection, measured baseline, then calibrated thresholds |
 
 ## 2. Physical host observation
 
@@ -65,14 +67,16 @@ The ADB qualifier deliberately exits with its experimental status after these st
 
 The initial physical GPU bring-up was attempted through `qualification/gpu/run-minimal.sh`. The reproducible report is `qualification/gpu/reports/pixel-7a-mali-g710-2026-09-27.txt`; it remains `EXPERIMENTAL` and grants no GPU capability. The attempt stopped before guest boot because the GrapheneOS-derived boot/system artifacts are not built, `/system/bin/carbon-renderer` is not installed, and the current AVF launch path has no renderer/resource transport connecting the VM's virtual GPU to the CarbonHV renderer and Android presentation boundary. Direct shell access to AVF's bundled crosvm binary is also denied on this stock user build.
 
+The 30-minute sustained entrypoint was also executed on the same Pixel and recorded in `qualification/gpu/reports/pixel-7a-mali-g710-sustained-2026-09-27.txt`. It stopped at the same preflight blockers before any guest workload ran. All performance/thermal/copy metrics therefore remain `unknown` or `not-run`, the threshold profile remains `uncalibrated`, and both `gpu.sustained` and `gpu.qualified` remain false.
+
 Separately, the current debug APK was installed and cold-launched on the Pixel. Portrait/landscape changes, background/foreground, and activity process recreation completed with no fatal/JNI/native presentation errors in the captured log. Because there was no live VM or guest frame source, this is only Android surface-lifecycle evidence; it does not prove VM continuity, buffer reuse, frame presentation, or Mali execution.
 
 ## 3. Starter guest status
 
 | Guest | Source/contract | Build | Boot | Mobile shell | GPU/input | Security/confinement | Update/recovery | Current label |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| CarbonHV GrapheneOS-derived ARM64 | CVD1 contract verified; Linux source recipe present | Recipe only | Unverified | Unverified | Unverified | Unverified on VM target | Transaction model only | Development recipe |
-| Ubuntu Touch / Lomiri ARM64 | CVD1 contract verified; rootfs+kernel assembler recipe present | Recipe only | Unverified | Unverified | Unverified | AppArmor/mobile-service behavior unverified | Transaction model only | Development recipe |
+| CarbonHV GrapheneOS-derived ARM64 | CVD1 contract verified; Linux source recipe present; virtual gralloc/HWC/EGL/Vulkan requirements locked | Recipe only | Unverified | Unverified | Contract requires virtual GLES/Vulkan + native-buffer/explicit-sync; runtime unverified | Unverified on VM target | Transaction model only | Development recipe |
+| Ubuntu Touch / Lomiri ARM64 | CVD1 contract verified; rootfs+kernel assembler recipe present; Mesa/Mir virtio-gpu requirements locked | Recipe only | Unverified | Unverified | Contract requires GLES + native-buffer/explicit-sync; Vulkan tested if exposed; runtime unverified | AppArmor/mobile-service behavior unverified | Transaction model only | Development recipe |
 
 The GrapheneOS-derived row must not be interpreted as official GrapheneOS device support. The Ubuntu Touch row means the intended guest is the genuine mobile session, not generic Ubuntu desktop.
 
@@ -90,7 +94,7 @@ The architecture defines v1 only when all mandatory statements below are true.
 | VMs survive activity/surface loss and tested crash/recovery | Partial | Reconnect/state/storage invariants are tested; live VM/process/surface recovery is unverified |
 | Guest data isolated; sharing explicit; no generic privileged shell | Partial | Storage IDs/leases and narrow broker design exist; production SELinux/IPC and sharing bridges are not integrated |
 | Signing/migration/rollback/recovery exercised | Partial | Migration/rollback transaction tests exist; production signing and real-image recovery are missing |
-| Sustained performance targets pass per guest | Unverified | No real guest performance/thermal data |
+| Sustained performance targets pass per guest | Unverified | Harness and workload definitions exist, but the Pixel profile is uncalibrated because no real guest performance/thermal baseline has run |
 | Unsupported configurations are blocked/experimental; no silent CPU emulation | Verified in policy | Admission/manifest rules fail closed; real product wiring must preserve these rules |
 
 Because the mandatory GPU, real-guest, end-to-end, and sustained-performance criteria remain open, the repository must not be labeled a supported v1 release.

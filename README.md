@@ -20,15 +20,18 @@ Implemented and exercised in source:
 - native Android Compose library/catalog/create/settings/recovery flows;
 - an immersive `SurfaceView` session shell with host-owned escape, geometry generations, input mapping, and reconnect policy;
 - GrapheneOS-derived and Ubuntu Touch CVD1 source/build recipes;
-- deterministic qualification fixtures and a physical-host ADB probe;
+- vendor-neutral CVD1 GPU capability/renderer contracts, a Mali-first native presentation path, and deterministic GPU qualification fixtures;
+- starter-guest graphics requirements for Android virtual gralloc/HWC/EGL/Vulkan and Ubuntu Touch Mesa/Mir on the same `virtio-gpu` ABI;
+- a physical-host ADB probe plus fail-closed minimal and sustained GPU qualification entrypoints;
 - one top-level verifier covering Rust, manifests, guest contracts, shell scripts, Android tests, and the debug APK.
 
 Still hardware/integration gated:
 
 - production Android platform/Binder registration for `carbonhvd` and final SELinux policy on a selected host branch;
 - a minimal ARM64 guest actually booted through CarbonHV's AVF path;
-- accelerated guest GPU rendering and buffer presentation into the Android surface;
+- accelerated guest GPU rendering and guest-produced buffer presentation into the Android surface;
 - real GrapheneOS-derived and Ubuntu Touch/Lomiri guest images built and booted;
+- calibrated Pixel 7a GPU release thresholds derived from real 30-minute Android-derived and Ubuntu Touch runs;
 - audio, networking, input, lifecycle, update, recovery, thermal, and sustained-performance qualification on real guests;
 - production bundle/catalog signing, release signing, and supported-update infrastructure.
 
@@ -48,7 +51,7 @@ The repository deliberately does not fall back to software CPU emulation when ha
 | `guest/android` | GrapheneOS-derived CVD1 recipe and port contract |
 | `guest/ubuntu-touch` | Ubuntu Touch/Lomiri CVD1 recipe and port contract |
 | `host` | Android host-integration templates and boundary documentation |
-| `qualification` | CI fixtures and physical-host capability probing |
+| `qualification` | CI fixtures, physical-host capability probing, and GPU qualification policy/evidence |
 | `scripts/verify.sh` | Whole-repository source/build verification |
 | `docs/ARCHITECTURE.md` | Full product and system architecture |
 
@@ -64,7 +67,7 @@ export GRADLE_USER_HOME="$PWD/.gradle-local"
 scripts/verify.sh
 ```
 
-The script checks formatting and Rust tests, validates both starter manifests and both CVD1 guest contracts, checks shell syntax and qualification fixtures, runs Android JVM tests, and builds `android/app/build/outputs/apk/debug/app-debug.apk`.
+The script checks formatting and Rust tests, validates both starter manifests and both CVD1 guest contracts, checks shell syntax and minimal/sustained GPU policy fixtures, runs Android JVM tests, and builds `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Build release-mode host tools
 
@@ -89,6 +92,8 @@ qualification/carbon-qualify.sh --adb <serial>
 ```
 
 The ADB probe checks the host ABI, the AVF `vm` tool, and `/dev/kvm`. Even when all three are present, the result stays `EXPERIMENTAL` until physical GPU/display qualification is completed with a real guest workload.
+
+The current Pixel 7a Mali profile is intentionally uncalibrated. `qualification/gpu/run-sustained.sh --adb <serial> --minutes 30` fails closed until real starter-guest frames reach the CarbonHV renderer/presentation path, then release thresholds can be derived from measured physical baseline data. The recorded 2026-09-27 attempt is blocked before the sustained workload because the GrapheneOS-derived guest artifacts are absent, `carbon-renderer` is not installed on the host, and AVF renderer/resource transport is not yet wired.
 
 ## Guest builds
 

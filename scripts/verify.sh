@@ -24,6 +24,8 @@ bash -n guest/ubuntu-touch/build.sh
 bash -n qualification/carbon-qualify.sh
 bash -n qualification/test-dry-run.sh
 bash -n qualification/gpu/run-minimal.sh
+bash -n qualification/gpu/run-sustained.sh
+bash -n qualification/gpu/test-sustained.sh
 bash -n qualification/gpu/collect-report.sh
 
 echo "[6/9] Qualification fixtures"
@@ -42,6 +44,8 @@ grep -qx 'gpu.native-buffer=false' <<<"$gpu_no_proof"
 grep -qx 'gpu.zero-copy=false' <<<"$gpu_no_proof"
 grep -qx 'gpu.sustained=false' <<<"$gpu_no_proof"
 grep -qx 'gpu.qualified=false' <<<"$gpu_no_proof"
+
+bash qualification/gpu/test-sustained.sh
 
 echo "[8/9] Android unit tests"
 if [[ -z "${JAVA_HOME:-}" ]]; then
