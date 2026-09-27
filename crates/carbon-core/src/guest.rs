@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+const SUPPORTED_AGENT_PROTOCOL_MAJOR: u32 = 1;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GuestOsFamily {
     Android,
@@ -33,6 +35,7 @@ pub enum GuestContractError {
     UnsupportedArchitecture(String),
     UnsupportedDevice { key: String, value: String },
     CvdMajorMismatch { expected: u32, got: u32 },
+    AgentProtocolMajorMismatch { expected: u32, got: u32 },
     VsockRequired,
 }
 
@@ -94,6 +97,12 @@ impl GuestContract {
             });
         }
         let agent_protocol_major = parse_u32(&values, "agent_protocol_major")?;
+        if agent_protocol_major != SUPPORTED_AGENT_PROTOCOL_MAJOR {
+            return Err(GuestContractError::AgentProtocolMajorMismatch {
+                expected: SUPPORTED_AGENT_PROTOCOL_MAJOR,
+                got: agent_protocol_major,
+            });
+        }
         let display = required(&values, "display")?;
         let input = required(&values, "input")?;
         let network = required(&values, "network")?;

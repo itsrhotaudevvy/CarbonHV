@@ -37,6 +37,17 @@ class SessionGeometryTest {
     }
 
     @Test
+    fun touch_on_exclusive_right_or_bottom_edge_is_rejected() {
+        val geometry = fitGuestGeometry(1080, 1920, 1080, 1920, generation = 3)
+
+        assertNull(geometry.mapTouch(1080f, 100f, eventGeneration = 3))
+        assertNull(geometry.mapTouch(100f, 1920f, eventGeneration = 3))
+        val nearEdge = geometry.mapTouch(1079f, 1919f, eventGeneration = 3)
+        assertTrue(requireNotNull(nearEdge).x < 1080f)
+        assertTrue(nearEdge.y < 1920f)
+    }
+
+    @Test
     fun geometry_tracker_increments_generation_only_when_dimensions_change() {
         val tracker = GeometryTracker()
         val first = tracker.update(1080, 2400, 1080, 1920)

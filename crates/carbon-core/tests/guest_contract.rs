@@ -77,3 +77,11 @@ fn ubuntu_touch_contract_is_distinct_family() {
     let contract = GuestContract::parse(&ubuntu, 1).unwrap();
     assert_eq!(contract.os_family, GuestOsFamily::UbuntuTouch);
 }
+
+#[test]
+fn rejects_incompatible_agent_protocol_major() {
+    let bad =
+        valid_android_contract().replace("agent_protocol_major = 1", "agent_protocol_major = 2");
+
+    assert!(GuestContract::parse(&bad, 1).is_err());
+}

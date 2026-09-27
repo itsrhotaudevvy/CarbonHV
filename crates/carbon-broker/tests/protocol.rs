@@ -132,3 +132,16 @@ fn rejects_second_start_while_instance_is_already_running() {
         })
     );
 }
+
+#[test]
+fn duplicate_stop_request_is_idempotent() {
+    let mut broker = Broker::new(policy());
+    broker.start(&caller(), request(9)).unwrap();
+
+    assert_eq!(broker.stop(&caller(), "vm-demo", Generation(9), 60), Ok(()));
+    assert_eq!(broker.stop(&caller(), "vm-demo", Generation(9), 60), Ok(()));
+    assert_eq!(
+        broker.stop(&caller(), "vm-demo", Generation(9), 61),
+        Err(RuntimeError::InstanceNotRunning)
+    );
+}

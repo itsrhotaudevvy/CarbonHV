@@ -73,6 +73,7 @@ pub struct Broker {
     policy: BrokerPolicy,
     minimum_generation: BTreeMap<String, Generation>,
     running: BTreeMap<String, InstanceRuntime>,
+    completed_stops: BTreeMap<String, (Generation, u64)>,
 }
 
 impl Broker {
@@ -81,6 +82,7 @@ impl Broker {
             policy,
             minimum_generation: BTreeMap::new(),
             running: BTreeMap::new(),
+            completed_stops: BTreeMap::new(),
         }
     }
 
@@ -170,13 +172,15 @@ impl Broker {
         caller: &CallerIdentity,
         instance_id: &str,
         generation: Generation,
-        _request_id: u64,
+        request_id: u64,
     ) -> Result<(), RuntimeError> {
         self.authorize(caller)?;
-        let running = self
-            .running
-            .get(instance_id)
-            .ok_or(RuntimeError::InstanceNotRunning)?;
+        let Some(running) = self.running.get(instance_id) else {
+            if self.completed_stops.get(instance_id) == Some(&(generation, request_id)) {
+                return Ok(());
+            }
+            return Err(RuntimeError::InstanceNotRunning);
+        };
         if running.generation != generation {
             return Err(RuntimeError::GenerationMismatch {
                 expected: running.generation,
@@ -188,6 +192,8 @@ impl Broker {
             instance_id.to_string(),
             Generation(generation.0.saturating_add(1)),
         );
+        self.completed_stops
+            .insert(instance_id.to_string(), (generation, request_id));
         Ok(())
     }
 
