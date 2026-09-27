@@ -4,6 +4,7 @@ members = [
     "crates/carbon-cli",
     "crates/carbon-protocol",
     "crates/carbon-broker",
+    "crates/carbon-renderer",
 ]
 resolver = "2"
 
@@ -11,3 +12,11 @@ resolver = "2"
 edition = "2024"
 license = "Apache-2.0"
 rust-version = "1.90"
+
+[workspace.metadata.carbonhv.renderer-upstream]
+crosvm-revision = "88c1385ccb8cb31e8e4d683f580c37057cfc4b48"
+rutabaga-gfx-version = "0.1.80"
+rutabaga-gfx-checksum = "2817d168222af3c49269f583dd8e67429912953ae608f715fd97683ed50320a5"
+magma-gpu-version = "0.1.80"
+magma-gpu-checksum = "002536499cb45b3509c179f42f8c48729364931668f5a2c1bef8c407addaa629"
+gfxstream-revision = "ebe5b424e15c0816f64b97c9691060333bb43c7e"
