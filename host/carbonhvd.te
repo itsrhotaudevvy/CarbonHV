@@ -1,0 +1,9 @@
+# Template policy. Device integration must resolve actual AVF/KVM labels on the pinned host branch.
+type carbonhvd, domain;
+type carbonhvd_exec, exec_type, system_file_type, file_type;
+
+init_daemon_domain(carbonhvd)
+
+# Keep file access scoped to a dedicated /data/misc/carbonhv label in the host product policy.
+# KVM/AVF permissions are intentionally not guessed here: the selected host branch must provide
+# the concrete device/service types and reviewable allow rules before H2 qualification.
