@@ -67,6 +67,7 @@ fun ImmersiveSessionScreen(
     var controlsVisible by remember { mutableStateOf(false) }
     var handleX by remember { mutableStateOf(0f) }
     var handleY by remember { mutableStateOf(0f) }
+    val graphicsSession = remember(instanceName) { GraphicsSession(vmGeneration = 0) }
 
     DisposableEffect(activity) {
         if (activity != null) {
@@ -96,6 +97,11 @@ fun ImmersiveSessionScreen(
                     keepScreenOn = true
                     holder.addCallback(object : SurfaceHolder.Callback {
                         override fun surfaceCreated(holder: SurfaceHolder) {
+                            graphicsSession.attachSurface(
+                                holder.surface,
+                                width.coerceAtLeast(1),
+                                height.coerceAtLeast(1),
+                            )
                             callbacks.onSurfaceAvailable(
                                 holder.surface,
                                 width.coerceAtLeast(1),
@@ -109,10 +115,12 @@ fun ImmersiveSessionScreen(
                             width: Int,
                             height: Int,
                         ) {
+                            graphicsSession.resizeSurface(holder.surface, width, height)
                             callbacks.onSurfaceChanged(holder.surface, width, height)
                         }
 
                         override fun surfaceDestroyed(holder: SurfaceHolder) {
+                            graphicsSession.detachSurface()
                             callbacks.onSurfaceDestroyed()
                         }
                     })

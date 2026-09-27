@@ -1,4 +1,5 @@
 #include "gpu_probe.h"
+#include "presentation.h"
 
 #include <jni.h>
 
@@ -167,4 +168,71 @@ Java_dev_carbonhv_session_GraphicsNative_nativeProbe(JNIEnv* env, jobject) {
         protected_memory,
         buffer_formats,
         refresh_rates);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_dev_carbonhv_session_GraphicsNative_nativeAttachSurface(
+    JNIEnv* env,
+    jobject,
+    jobject surface,
+    jint width,
+    jint height,
+    jlong generation) {
+    return carbonhv::graphics::presentation_session().attach_surface(
+        env, surface, width, height, generation)
+        ? JNI_TRUE
+        : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_dev_carbonhv_session_GraphicsNative_nativeResizeSurface(
+    JNIEnv* env,
+    jobject,
+    jobject surface,
+    jint width,
+    jint height,
+    jlong generation) {
+    return carbonhv::graphics::presentation_session().resize_surface(
+        env, surface, width, height, generation)
+        ? JNI_TRUE
+        : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_carbonhv_session_GraphicsNative_nativeDetachSurface(
+    JNIEnv*,
+    jobject,
+    jlong generation) {
+    carbonhv::graphics::presentation_session().detach_surface(generation);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_dev_carbonhv_session_GraphicsNative_nativePresentFrame(
+    JNIEnv* env,
+    jobject,
+    jlong frame_id,
+    jobject hardware_buffer,
+    jint width,
+    jint height,
+    jint format,
+    jlong usage,
+    jint acquire_fence_fd,
+    jlong generation) {
+    return carbonhv::graphics::presentation_session().present_frame(
+        env,
+        frame_id,
+        hardware_buffer,
+        width,
+        height,
+        format,
+        static_cast<std::uint64_t>(usage),
+        acquire_fence_fd,
+        generation)
+        ? JNI_TRUE
+        : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_dev_carbonhv_session_GraphicsNative_nativeReleaseFrame(JNIEnv*, jobject, jlong frame_id) {
+    carbonhv::graphics::presentation_session().release_frame(frame_id);
 }
