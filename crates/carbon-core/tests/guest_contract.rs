@@ -85,3 +85,38 @@ fn rejects_incompatible_agent_protocol_major() {
 
     assert!(GuestContract::parse(&bad, 1).is_err());
 }
+
+#[test]
+fn starter_android_contract_requires_accelerated_virtual_graphics() {
+    let contract =
+        GuestContract::parse(include_str!("../../../guest/android/device/cvd1.toml"), 1).unwrap();
+
+    for required in [
+        "gpu",
+        "gpu.gles",
+        "gpu.vulkan",
+        "gpu.native-buffer",
+        "gpu.explicit-sync",
+    ] {
+        assert!(
+            contract.required_capabilities.contains(required),
+            "Android starter guest must require {required}"
+        );
+    }
+}
+
+#[test]
+fn ubuntu_touch_contract_requires_common_native_presentation_path() {
+    let contract = GuestContract::parse(
+        include_str!("../../../guest/ubuntu-touch/device/cvd1.toml"),
+        1,
+    )
+    .unwrap();
+
+    for required in ["gpu", "gpu.gles", "gpu.native-buffer", "gpu.explicit-sync"] {
+        assert!(
+            contract.required_capabilities.contains(required),
+            "Ubuntu Touch starter guest must require {required}"
+        );
+    }
+}

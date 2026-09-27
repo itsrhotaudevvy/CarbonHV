@@ -10,6 +10,9 @@ block = "virtio-blk"
 audio = "virtio-snd"
 vsock = true
 required_capability = "gpu"
+required_capability = "gpu.gles"
+required_capability = "gpu.vulkan"
+required_capability = "gpu.native-buffer"
+required_capability = "gpu.explicit-sync"
 required_capability = "audio-output"
 required_capability = "enforcing-selinux"
-

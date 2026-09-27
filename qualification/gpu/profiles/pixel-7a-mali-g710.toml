@@ -1,0 +1,14 @@
+# Release thresholds are deliberately absent until a real 30-minute baseline exists for both
+# starter guests. run-sustained.sh treats this profile as blocking while status is uncalibrated.
+profile_id = "pixel-7a-mali-g710"
+status = "uncalibrated"
+minimum_minutes = 30
+baseline_report = "pending"
+threshold_source = "pending-real-guest-physical-baseline"
+
+device_model = "Pixel 7a"
+soc = "GS201"
+gpu = "Mali-G710"
+renderer_id = "gfxstream-vulkan-mali"
+cvd_major = 1
+workload_version = "sustained-gpu-v1"
