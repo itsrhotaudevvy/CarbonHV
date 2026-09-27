@@ -31,6 +31,10 @@ Status vocabulary:
 | Update transaction model | Verified | Interruption, health/commit, rollback and migration-epoch tests | Real signed guest updates and storage fault injection |
 | Backup/restore/clone metadata | Verified | Manifest integrity and identity semantics tests | Real stopped-disk backup/restore on physical guest data |
 | Qualification fixtures | Verified | `qualification/test-dry-run.sh` | Fixtures are policy tests, not phone certification |
+| GPU capability/profile model | Verified | Host-independent tests cover Mali profile selection, exact tuple invalidation, and no software fallback | Physical renderer execution still required |
+| Mali renderer adapter | Verified source/build | Pinned crosvm/Rutabaga/gfxstream profile; feature-gated Rutabaga adapter compiles; broker accepts only registered renderer entry points | `gfxstream_backend` is not yet built/deployed on the phone and no AVF resource transport is wired |
+| Android GPU probe + presentation boundary | Verified build / physical lifecycle observed | ARM64 JNI library builds; generation/queue tests pass; debug APK cold-launched on Pixel 7a and survived rotate, background/foreground, and activity-process recreation without fatal/native errors | No guest-produced `AHardwareBuffer` has reached the physical presentation path yet |
+| GPU proof harness | Verified | Positive/no-proof fixtures enforce hardware-evidence gating; physical Pixel report records blocked bring-up without promoting capabilities | Needs real guest/renderer evidence, then sustained and both-guest qualification |
 
 ## 2. Physical host observation
 
@@ -45,13 +49,23 @@ One attached development host was re-probed on 2026-09-27:
 | Build fingerprint | `google/lynx/lynx:17/CP3A.260905.009/16091614:user/release-keys` |
 | `/apex/com.android.virt/bin/vm` | Present/executable |
 | `/dev/kvm` | Present |
+| SoC | `GS201` (Tensor G2 family) |
+| GPU | `Mali-G710` |
+| EGL provider | `mali` |
+| Vulkan provider | `mali` |
+| Vulkan driver version | `226504704` |
+| Kernel | `6.1.162-android14-11-g2ec90535fa34-ab15810641` |
+| AVF revision | `com.android.virt@371899999` |
+| Built-in display | 1080 × 2400; 60/90 Hz modes observed |
 | CPU qualification result | `hardware-virtualized` |
 | Graphics | `unverified` |
 | Overall probe result | `EXPERIMENTAL` |
 
 The ADB qualifier deliberately exits with its experimental status after these static checks. This host is a viable bring-up candidate; it is **not** a supported CarbonHV host tuple yet.
 
-The probe does not establish that CarbonHV's final service identity can launch arbitrary full-system guests, that all CVD1 devices are available through the chosen AVF interface, or that guest graphics can be accelerated/presented into the app.
+The initial physical GPU bring-up was attempted through `qualification/gpu/run-minimal.sh`. The reproducible report is `qualification/gpu/reports/pixel-7a-mali-g710-2026-09-27.txt`; it remains `EXPERIMENTAL` and grants no GPU capability. The attempt stopped before guest boot because the GrapheneOS-derived boot/system artifacts are not built, `/system/bin/carbon-renderer` is not installed, and the current AVF launch path has no renderer/resource transport connecting the VM's virtual GPU to the CarbonHV renderer and Android presentation boundary. Direct shell access to AVF's bundled crosvm binary is also denied on this stock user build.
+
+Separately, the current debug APK was installed and cold-launched on the Pixel. Portrait/landscape changes, background/foreground, and activity process recreation completed with no fatal/JNI/native presentation errors in the captured log. Because there was no live VM or guest frame source, this is only Android surface-lifecycle evidence; it does not prove VM continuity, buffer reuse, frame presentation, or Mali execution.
 
 ## 3. Starter guest status
 
@@ -95,7 +109,7 @@ This is the Task 12 requirements pass against `docs/ARCHITECTURE.md`.
 | §9 lifecycle/persistence | State, generations, disk leases, idempotent operations | Verified model; platform service/runtime wiring pending |
 | §10 native host experience | Compose library/catalog/create/settings/recovery surfaces | Partial; live runtime, shortcuts, real install/download flows pending |
 | §11 immersion | SurfaceView, host escape affordance, geometry generations, input ownership policy | Partial; physical gesture modes, external display/fold/IME pending |
-| §12 graphics/display | Architecture contract only plus session surface | Unverified; renderer, virtio-gpu, buffers/fences, backpressure and fault recovery are major gates |
+| §12 graphics/display | Mali capability/profile model, pinned Rutabaga/gfxstream adapter, native AHardwareBuffer/fence presentation state machine, and proof harness | Partial; no guest GPU resource transport through stock AVF and no physical guest-produced frame has reached the SurfaceView |
 | §13 input/accessibility | Coordinate transforms and input policy tests | Partial; keyboard/IME/stylus/screen-reader/large-font physical acceptance pending |
 | §14 audio/camera/sensors/haptics | No end-to-end bridges qualified | Unverified / optional subset for v1 except audio output is mandatory |
 | §15 host/guest protocol | CVD1 vsock protocol document and bounded handshake/message contract | Partial; production agent implementations and adversarial runtime tests pending |
@@ -121,7 +135,7 @@ This is the Task 12 requirements pass against `docs/ARCHITECTURE.md`.
 | --- | --- | --- |
 | Gate 0 — authorized host path | Partial | Pin selected Pixel/Android source branch; implement/audit service registration, caller authorization, SELinux, runtime ownership |
 | Gate 1 — actual hardware execution | Open | Boot a minimal ARM64 guest repeatedly through the real CarbonHV backend; verify vCPUs, timers, block, vsock, shutdown, cleanup |
-| Gate 2 — local graphics path | Open | Hardware-rendered guest scene/compositor through selected renderer into Android surface with measured latency/energy and correct buffer/fence ownership |
+| Gate 2 — local graphics path | Open | Build a bootable ARM64 graphics guest, deploy the renderer in an authorized host context, connect AVF/crosvm virtio-gpu resources to that renderer, then prove hardware-rendered frames reach the Android surface with measured copy/fence behavior |
 | Gate 3 — both starter guest ports | Open | Real GrapheneOS-derived and Ubuntu Touch images boot to genuine mobile shells, persist data, preserve declared confinement, and use qualified display/input |
 | Gate 4 — complete native product flow | Partial | Wire the app to live broker/bundle install/runtime; qualify text input, escape, recreation, return, accessibility |
 | Gate 5 — durable data/updates | Partial | Signed real-image update/backup/restore plus interruption/storage exhaustion/migration recovery tests |

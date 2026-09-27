@@ -21,6 +21,17 @@ qualification/gpu/run-minimal.sh \
   --output qualification/gpu/reports/<run>.txt
 ```
 
+Before guest evidence exists, the bring-up preflight can be run with the selected renderer profile:
+
+```bash
+qualification/gpu/run-minimal.sh \
+  --adb <serial> \
+  --renderer gfxstream-vulkan-mali \
+  --output qualification/gpu/reports/<run>.txt
+```
+
+If required guest artifacts, renderer deployment, or AVF renderer transport are missing, this form exits with the experimental status code `4`, emits `bringup_status=BLOCKED`, and keeps every GPU capability false. It is intended to make an incomplete physical attempt reproducible without turning host facts into acceleration claims.
+
 The physical path does not accept host-only Android rendering as guest proof. `guest_gpu_transport=virtio-gpu`, a guest workload result, renderer identity, presentation counts, copy inventory, and a host-GPU proof source all come from the VM/renderer run.
 
 The minimal harness can establish basic Vulkan/native-buffer evidence, but it always leaves `gpu.qualified=false`. Full qualification additionally requires the real Android-derived and Ubuntu Touch/Lomiri guests plus sustained testing.
