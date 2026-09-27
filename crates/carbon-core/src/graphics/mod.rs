@@ -8,5 +8,6 @@ pub use capabilities::{
 };
 pub use qualification::{GpuQualificationTuple, QualificationRecord, qualification_applies};
 pub use selection::{
-    GpuRendererProfile, RendererSelection, RendererSelectionMode, select_renderer,
+    GpuRendererProfile, RendererQualification, RendererSelection, RendererSelectionMode,
+    select_renderer,
 };

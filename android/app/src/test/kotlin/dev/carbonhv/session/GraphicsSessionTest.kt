@@ -69,10 +69,29 @@ class GraphicsSessionTest {
         )
         assertEquals(2, session.inFlightFrameCount)
 
-        session.onFrameReleased(1)
+        backend.releaseCompletions += NativeFrameRelease(frameId = 1, releaseFenceFd = -1)
+        assertEquals(
+            listOf(NativeFrameRelease(frameId = 1, releaseFenceFd = -1)),
+            session.drainReleasedFrames(),
+        )
 
         assertEquals(PresentResult.Presented, session.presentFrame(frame(3, 3), generation))
         assertEquals(2, session.inFlightFrameCount)
+    }
+
+    @Test
+    fun drainingNativeReleaseCompletionsReturnsFenceOwnershipAndMakesQueueRoom() {
+        val backend = FakePresentationBackend()
+        val session = GraphicsSession(vmGeneration = 1, backend = backend, maxInFlightFrames = 1)
+        val generation = session.attachSurface(surface(), 100, 100)
+        assertEquals(PresentResult.Presented, session.presentFrame(frame(1, 1), generation))
+        backend.releaseCompletions += NativeFrameRelease(frameId = 1, releaseFenceFd = 37)
+
+        val releases = session.drainReleasedFrames()
+
+        assertEquals(listOf(NativeFrameRelease(frameId = 1, releaseFenceFd = 37)), releases)
+        assertEquals(0, session.inFlightFrameCount)
+        assertEquals(PresentResult.Presented, session.presentFrame(frame(2, 2), generation))
     }
 
     @Test
@@ -82,7 +101,8 @@ class GraphicsSessionTest {
         val generation = session.attachSurface(surface(), 100, 100)
 
         assertEquals(PresentResult.Presented, session.presentFrame(frame(2, 2), generation))
-        session.onFrameReleased(2)
+        backend.releaseCompletions += NativeFrameRelease(frameId = 2, releaseFenceFd = -1)
+        session.drainReleasedFrames()
         assertEquals(
             PresentResult.Dropped(DropReason.OBSOLETE_FRAME),
             session.presentFrame(frame(1, 1), generation),
@@ -104,6 +124,26 @@ class GraphicsSessionTest {
         assertEquals(listOf(11L, 12L), backend.releasedFrameIds)
     }
 
+    @Test
+    fun surfaceGenerationChangeDoesNotCancelFramesBeforeNativeReleaseCompletion() {
+        val backend = FakePresentationBackend()
+        val session = GraphicsSession(vmGeneration = 1, backend = backend, maxInFlightFrames = 2)
+        val generation = session.attachSurface(surface(), 100, 100)
+        session.presentFrame(frame(11, 1), generation)
+
+        session.resizeSurface(surface(), 120, 100)
+
+        assertEquals(1, session.inFlightFrameCount)
+        assertTrue(backend.releasedFrameIds.isEmpty())
+
+        backend.releaseCompletions += NativeFrameRelease(frameId = 11, releaseFenceFd = 41)
+        assertEquals(
+            listOf(NativeFrameRelease(frameId = 11, releaseFenceFd = 41)),
+            session.drainReleasedFrames(),
+        )
+        assertEquals(0, session.inFlightFrameCount)
+    }
+
     private fun frame(id: Long, sequence: Long) = NativeFrame(
         frameId = id,
         sequence = sequence,
@@ -122,6 +162,7 @@ private class FakePresentationBackend : GraphicsPresentationBackend {
     val lifecycle = mutableListOf<String>()
     val presentedFrameIds = mutableListOf<Long>()
     val releasedFrameIds = mutableListOf<Long>()
+    val releaseCompletions = mutableListOf<NativeFrameRelease>()
 
     override fun attachSurface(surface: Surface, width: Int, height: Int, generation: Long): Boolean {
         lifecycle += "attach"
@@ -145,4 +186,7 @@ private class FakePresentationBackend : GraphicsPresentationBackend {
     override fun releaseFrame(frameId: Long) {
         releasedFrameIds += frameId
     }
+
+    override fun drainReleasedFrames(): List<NativeFrameRelease> =
+        releaseCompletions.toList().also { releaseCompletions.clear() }
 }

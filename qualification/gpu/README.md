@@ -42,6 +42,18 @@ The sustained policy is documented in `workloads/README.md`. Its entrypoint is:
 qualification/gpu/run-sustained.sh --adb <serial> --minutes 30
 ```
 
-The Pixel 7a profile in `profiles/pixel-7a-mali-g710.toml` remains `uncalibrated` until both real starter guests complete the mandatory workload set and 30-minute physical baseline. Numeric thresholds are deliberately absent before that measurement. A blocked run records `unknown`/`not-run` metrics and keeps `gpu.sustained=false`, `gpu.qualified=false`, and `qualification=EXPERIMENTAL`.
+That form is the bring-up preflight and remains fail-closed while guest/renderer transport is blocked. After the real workload runner captures normalized evidence, qualification uses:
+
+```bash
+qualification/gpu/run-sustained.sh \
+  --adb <serial> \
+  --evidence <physical-sustained.env> \
+  --profile qualification/gpu/profiles/pixel-7a-mali-g710.toml \
+  --minutes 30
+```
+
+The ADB+evidence path first re-validates the minimal hardware-render/native-buffer proof against the currently connected host, then requires every material tuple field in the calibrated profile to match: CarbonHV commit, device/SoC/GPU, host build, kernel, AVF revision, renderer/version, graphics driver, both guest bundle versions, CVD major, display mode, and workload version. Only that physical path may emit `gpu.sustained=true`, `gpu.qualified=true`, and `qualification=QUALIFIED`.
+
+The Pixel 7a profile remains `uncalibrated` until both real starter guests complete the mandatory workload set and 30-minute physical baseline. Numeric thresholds and exact tuple locks are deliberately absent before that measurement. A blocked run records `unknown`/`not-run` metrics and keeps `gpu.sustained=false`, `gpu.qualified=false`, and `qualification=EXPERIMENTAL`.
 
 `test-sustained.sh` exercises duration, workload, threshold, and fixture-evidence gates without granting physical capability state.

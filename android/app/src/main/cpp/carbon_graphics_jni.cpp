@@ -5,6 +5,8 @@
 
 #include <cstdint>
 #include <optional>
+#include <unistd.h>
+#include <vector>
 
 namespace {
 
@@ -235,4 +237,38 @@ Java_dev_carbonhv_session_GraphicsNative_nativePresentFrame(
 extern "C" JNIEXPORT void JNICALL
 Java_dev_carbonhv_session_GraphicsNative_nativeReleaseFrame(JNIEnv*, jobject, jlong frame_id) {
     carbonhv::graphics::presentation_session().release_frame(frame_id);
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_dev_carbonhv_session_GraphicsNative_nativeDrainReleasedFrames(JNIEnv* env, jobject) {
+    auto released = carbonhv::graphics::presentation_session().drain_released_frames();
+    const jsize element_count = static_cast<jsize>(released.size() * 2);
+    jlongArray values = env->NewLongArray(element_count);
+    if (values == nullptr) {
+        for (const auto& frame : released) {
+            if (frame.release_fence_fd >= 0) {
+                close(frame.release_fence_fd);
+            }
+        }
+        return nullptr;
+    }
+
+    std::vector<jlong> flattened;
+    flattened.reserve(static_cast<std::size_t>(element_count));
+    for (const auto& frame : released) {
+        flattened.push_back(static_cast<jlong>(frame.frame_id));
+        flattened.push_back(static_cast<jlong>(frame.release_fence_fd));
+    }
+    if (!flattened.empty()) {
+        env->SetLongArrayRegion(values, 0, element_count, flattened.data());
+    }
+    if (env->ExceptionCheck()) {
+        for (const auto& frame : released) {
+            if (frame.release_fence_fd >= 0) {
+                close(frame.release_fence_fd);
+            }
+        }
+        return nullptr;
+    }
+    return values;
 }

@@ -1,4 +1,7 @@
-use super::{GpuHostCapabilities, GraphicsCapability, HostGraphicsApi, RendererFamily};
+use super::{
+    GpuHostCapabilities, GpuQualificationTuple, GraphicsCapability, HostGraphicsApi,
+    QualificationRecord, RendererFamily, qualification_applies,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GpuRendererProfile {
@@ -56,10 +59,32 @@ pub enum RendererSelection {
     Unavailable,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct RendererQualification<'a> {
+    pub record: &'a QualificationRecord,
+    pub current: &'a GpuQualificationTuple,
+}
+
+impl RendererQualification<'_> {
+    fn qualifies(&self, profile: &GpuRendererProfile) -> bool {
+        qualification_applies(self.record, self.current)
+            && self.current.renderer_id == profile.id
+            && self
+                .record
+                .capabilities
+                .contains(&GraphicsCapability::Qualified)
+            && profile
+                .required
+                .iter()
+                .all(|capability| self.record.capabilities.contains(capability))
+    }
+}
+
 pub fn select_renderer(
     host: &GpuHostCapabilities,
     profiles: &[GpuRendererProfile],
     mode: RendererSelectionMode,
+    qualification: Option<RendererQualification<'_>>,
 ) -> RendererSelection {
     for profile in profiles {
         if !profile.host_matches(host)
@@ -71,10 +96,7 @@ pub fn select_renderer(
             continue;
         }
 
-        let qualified = profile
-            .required
-            .iter()
-            .all(|capability| host.is_qualified(*capability));
+        let qualified = qualification.is_some_and(|evidence| evidence.qualifies(profile));
 
         match (mode, qualified) {
             (_, true) => return RendererSelection::Selected(profile.clone()),

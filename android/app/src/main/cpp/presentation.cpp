@@ -256,6 +256,20 @@ void PresentationSession::release_frame(std::int64_t frame_id) noexcept {
     impl_->release_frame_locked(frame_id);
 }
 
+std::vector<ReleasedFrame> PresentationSession::drain_released_frames() noexcept {
+    std::lock_guard lock(impl_->mutex);
+    std::vector<ReleasedFrame> released;
+    released.reserve(impl_->release_fences.size());
+    for (const auto& [frame_id, fd] : impl_->release_fences) {
+        released.push_back(ReleasedFrame{
+            .frame_id = frame_id,
+            .release_fence_fd = fd,
+        });
+    }
+    impl_->release_fences.clear();
+    return released;
+}
+
 PresentationSession& presentation_session() noexcept {
     static auto* session = new PresentationSession();
     return *session;
