@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "carbon-broker"
+version = "0.1.0"
+dependencies = [
+ "carbon-core",
+ "carbon-protocol",
+]
+
+[[package]]
 name = "carbon-cli"
 version = "0.1.0"
 dependencies = [
@@ -12,3 +20,10 @@ dependencies = [
 [[package]]
 name = "carbon-core"
 version = "0.1.0"
+
+[[package]]
+name = "carbon-protocol"
+version = "0.1.0"
+dependencies = [
+ "carbon-core",
+]
