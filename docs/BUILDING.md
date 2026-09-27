@@ -89,7 +89,14 @@ Expected executable outputs:
 ```text
 target/release/carbonctl
 target/release/carbonhvd
+target/release/carbon-renderer
 ```
+
+`carbon-renderer` now has a strict per-VM process argv contract. The broker reserves inherited
+descriptor 3 for the crosvm/virtio-gpu resource channel and descriptor 4 for the native Android
+presentation channel, and accepts runtime directories only below `/data/misc/carbonhv/runtime`.
+The executable intentionally exits fail-closed after configuration validation until the AVF/crosvm
+resource serve loop is connected; its existence alone is not graphics qualification.
 
 Useful validation commands:
 
