@@ -1,6 +1,5 @@
 use carbon_core::{
-    AdmissionDecision, AdmissionFailure, BundleRequirements, CpuArch, HostCapabilities,
-    admit,
+    AdmissionDecision, AdmissionFailure, BundleRequirements, CpuArch, HostCapabilities, admit,
 };
 
 fn ready_host() -> HostCapabilities {
@@ -26,7 +25,10 @@ fn starter_bundle() -> BundleRequirements {
 
 #[test]
 fn admits_supported_accelerated_arm64_host() {
-    assert_eq!(admit(&ready_host(), &starter_bundle()), AdmissionDecision::Ready);
+    assert_eq!(
+        admit(&ready_host(), &starter_bundle()),
+        AdmissionDecision::Ready
+    );
 }
 
 #[test]

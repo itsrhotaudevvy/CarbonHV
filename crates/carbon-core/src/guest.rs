@@ -67,8 +67,8 @@ impl GuestContract {
             if !allowed.contains(key) {
                 return Err(GuestContractError::UnknownKey(key.to_string()));
             }
-            let value = parse_value(raw_value.trim())
-                .ok_or(GuestContractError::InvalidLine(index + 1))?;
+            let value =
+                parse_value(raw_value.trim()).ok_or(GuestContractError::InvalidLine(index + 1))?;
             if key == "required_capability" {
                 required_capabilities.insert(value);
             } else if values.insert(key.to_string(), value).is_some() {
@@ -167,4 +167,3 @@ fn require_device(key: &str, value: &str, expected: &str) -> Result<(), GuestCon
         })
     }
 }
-

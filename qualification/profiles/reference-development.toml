@@ -1,0 +1,8 @@
+id = "reference-development"
+arch = "arm64"
+hardware_virtualization = true
+broker_authorized = true
+gpu_acceleration = true
+memory_mib = 12288
+storage_mib = 131072
+

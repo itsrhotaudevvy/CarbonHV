@@ -8,7 +8,10 @@ fn interrupted_update_keeps_current_system_before_candidate_health() {
     let mut tx = UpdateTransaction::begin("2026.09.01", 4);
     tx.stage_verified("2026.09.27", 4).unwrap();
 
-    assert_eq!(tx.recover_after_interrupt(), UpdateDecision::BootCurrent("2026.09.01".into()));
+    assert_eq!(
+        tx.recover_after_interrupt(),
+        UpdateDecision::BootCurrent("2026.09.01".into())
+    );
 }
 
 #[test]
@@ -18,7 +21,10 @@ fn healthy_candidate_can_commit_and_become_current() {
     tx.mark_candidate_healthy().unwrap();
     tx.commit().unwrap();
 
-    assert_eq!(tx.recover_after_interrupt(), UpdateDecision::BootCurrent("2026.09.27".into()));
+    assert_eq!(
+        tx.recover_after_interrupt(),
+        UpdateDecision::BootCurrent("2026.09.27".into())
+    );
 }
 
 #[test]
@@ -46,7 +52,10 @@ fn backup_manifest_rejects_invalid_hash_and_unsafe_object_id() {
     let unsafe_object = BackupManifest::parse(
         "instance_id=vm-1\ngeneration=8\nmachine_identity=id-a\ndata_object=../data\nsystem_hash=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n",
     );
-    assert_eq!(unsafe_object, Err(BackupError::UnsafeObjectId("../data".into())));
+    assert_eq!(
+        unsafe_object,
+        Err(BackupError::UnsafeObjectId("../data".into()))
+    );
 }
 
 #[test]
@@ -57,11 +66,15 @@ fn restore_retains_machine_identity_but_clone_regenerates_it() {
     .unwrap();
 
     assert_eq!(
-        manifest.identity_plan(RestoreMode::Restore { target_instance_id: "vm-1".into() }),
+        manifest.identity_plan(RestoreMode::Restore {
+            target_instance_id: "vm-1".into()
+        }),
         CloneIdentityPlan::Retain("id-a".into())
     );
     assert_eq!(
-        manifest.identity_plan(RestoreMode::Clone { target_instance_id: "vm-2".into() }),
+        manifest.identity_plan(RestoreMode::Clone {
+            target_instance_id: "vm-2".into()
+        }),
         CloneIdentityPlan::Regenerate {
             target_instance_id: "vm-2".into(),
             regenerate_machine_id: true,

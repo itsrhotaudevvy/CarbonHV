@@ -31,7 +31,10 @@ fn rejects_incompatible_cvd_major() {
     let bad = valid_android_contract().replace("cvd_major = 1", "cvd_major = 2");
     assert_eq!(
         GuestContract::parse(&bad, 1),
-        Err(GuestContractError::CvdMajorMismatch { expected: 1, got: 2 }),
+        Err(GuestContractError::CvdMajorMismatch {
+            expected: 1,
+            got: 2
+        }),
     );
 }
 
@@ -55,7 +58,8 @@ fn rejects_non_arm64_contract() {
 
 #[test]
 fn rejects_unknown_virtual_device_backend() {
-    let bad = valid_android_contract().replace("display = \"virtio-gpu\"", "display = \"physical-gpu\"");
+    let bad =
+        valid_android_contract().replace("display = \"virtio-gpu\"", "display = \"physical-gpu\"");
     assert_eq!(
         GuestContract::parse(&bad, 1),
         Err(GuestContractError::UnsupportedDevice {

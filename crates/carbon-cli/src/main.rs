@@ -78,7 +78,9 @@ fn main() -> ExitCode {
             }
         }
     } else {
-        eprintln!("usage: carbonctl bundle verify <bundle.toml> | guest verify <device.toml> | backup verify <manifest>");
+        eprintln!(
+            "usage: carbonctl bundle verify <bundle.toml> | guest verify <device.toml> | backup verify <manifest>"
+        );
         ExitCode::from(64)
     }
 }

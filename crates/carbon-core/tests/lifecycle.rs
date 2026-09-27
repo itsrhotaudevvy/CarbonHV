@@ -7,12 +7,32 @@ use carbon_core::{
 fn follows_legal_start_pause_resume_stop_cycle() {
     let mut vm = LifecycleMachine::new(Generation(7), VmState::Stopped);
 
-    assert_eq!(vm.apply(Generation(7), 1, LifecycleAction::Start).unwrap(), VmState::Starting);
-    assert_eq!(vm.apply(Generation(7), 2, LifecycleAction::Started).unwrap(), VmState::Running);
-    assert_eq!(vm.apply(Generation(7), 3, LifecycleAction::Pause).unwrap(), VmState::Paused);
-    assert_eq!(vm.apply(Generation(7), 4, LifecycleAction::Resume).unwrap(), VmState::Running);
-    assert_eq!(vm.apply(Generation(7), 5, LifecycleAction::Stop).unwrap(), VmState::Stopping);
-    assert_eq!(vm.apply(Generation(7), 6, LifecycleAction::Stopped).unwrap(), VmState::Stopped);
+    assert_eq!(
+        vm.apply(Generation(7), 1, LifecycleAction::Start).unwrap(),
+        VmState::Starting
+    );
+    assert_eq!(
+        vm.apply(Generation(7), 2, LifecycleAction::Started)
+            .unwrap(),
+        VmState::Running
+    );
+    assert_eq!(
+        vm.apply(Generation(7), 3, LifecycleAction::Pause).unwrap(),
+        VmState::Paused
+    );
+    assert_eq!(
+        vm.apply(Generation(7), 4, LifecycleAction::Resume).unwrap(),
+        VmState::Running
+    );
+    assert_eq!(
+        vm.apply(Generation(7), 5, LifecycleAction::Stop).unwrap(),
+        VmState::Stopping
+    );
+    assert_eq!(
+        vm.apply(Generation(7), 6, LifecycleAction::Stopped)
+            .unwrap(),
+        VmState::Stopped
+    );
 }
 
 #[test]

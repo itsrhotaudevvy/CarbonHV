@@ -130,4 +130,3 @@ fn safe_id(value: &str) -> bool {
 fn valid_sha256(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
-
