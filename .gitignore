@@ -1,4 +1,5 @@
 .gradle/
+.gradle-local/
 .idea/
 .kotlin/
 build/
@@ -12,4 +13,3 @@ local.properties
 *.iml
 captures/
 dist/
-
