@@ -6,6 +6,7 @@ add_library(
     SHARED
     carbon_graphics_jni.cpp
     gpu_probe.cpp
+    presentation.cpp
 )
 
 target_compile_features(carbon_graphics PRIVATE cxx_std_20)
