@@ -51,7 +51,7 @@ data class AppState(
             catalog = listOf(
                 CatalogBundle(
                     id = "grapheneos",
-                    name = "GrapheneOS",
+                    name = "GrapheneOS-derived",
                     description = "CarbonHV-maintained ARM64 virtual-device build",
                     integrationProfile = "Private",
                     recommendedMemoryMiB = 4096,
@@ -131,4 +131,3 @@ fun reduceApp(state: AppState, event: AppEvent): AppState = when (event) {
         recoveryFailure = event.failure,
     )
 }
-

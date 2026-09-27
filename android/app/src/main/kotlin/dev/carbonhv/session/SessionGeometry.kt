@@ -22,7 +22,7 @@ data class GuestGeometry(
     fun mapTouch(hostX: Float, hostY: Float, eventGeneration: Int): MappedTouch? {
         if (eventGeneration != generation) return null
         if (hostX < offsetX || hostY < offsetY) return null
-        if (hostX > offsetX + drawWidth || hostY > offsetY + drawHeight) return null
+        if (hostX >= offsetX + drawWidth || hostY >= offsetY + drawHeight) return null
         if (drawWidth <= 0f || drawHeight <= 0f) return null
 
         val x = ((hostX - offsetX) / drawWidth) * guestWidth
@@ -83,4 +83,3 @@ class GeometryTracker {
         )
     }
 }
-

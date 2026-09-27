@@ -3,6 +3,8 @@ use std::path::{Component, Path};
 
 use crate::{BundleRequirements, CpuArch};
 
+const SUPPORTED_CVD_MAJOR: u32 = 1;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReleaseStatus {
     Development,
@@ -49,8 +51,10 @@ pub enum BundleError {
     InvalidBoolean(String),
     InvalidEnum { key: String, value: String },
     UnsupportedArchitecture(String),
+    CvdMajorMismatch { expected: u32, got: u32 },
     UnsafeBackend(String),
     HardwareVirtualizationRequired,
+    MissingArtifact,
     UnsafeArtifactPath,
     InvalidArtifact,
     DuplicateArtifactRole(String),
@@ -122,6 +126,12 @@ impl BundleManifest {
         };
 
         let cvd_major = parse_u32(&values, "cvd_major")?;
+        if cvd_major != SUPPORTED_CVD_MAJOR {
+            return Err(BundleError::CvdMajorMismatch {
+                expected: SUPPORTED_CVD_MAJOR,
+                got: cvd_major,
+            });
+        }
         let memory_mib = parse_u64(&values, "memory_mib")?;
         let storage_mib = parse_u64(&values, "storage_mib")?;
         let requires_hardware_virtualization =
@@ -149,6 +159,9 @@ impl BundleManifest {
         };
 
         let mut roles = BTreeSet::new();
+        if artifacts.is_empty() {
+            return Err(BundleError::MissingArtifact);
+        }
         for artifact in &artifacts {
             if !roles.insert(artifact.role.clone()) {
                 return Err(BundleError::DuplicateArtifactRole(artifact.role.clone()));

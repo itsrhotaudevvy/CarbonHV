@@ -16,6 +16,14 @@ class AppReducerTest {
     }
 
     @Test
+    fun grapheneos_catalog_identity_is_explicitly_downstream() {
+        val bundle = AppState.initial().catalog.single { it.id == "grapheneos" }
+
+        assertEquals("GrapheneOS-derived", bundle.name)
+        assertTrue(bundle.description.contains("CarbonHV-maintained"))
+    }
+
+    @Test
     fun create_flow_requires_non_blank_unique_name() {
         var state = AppState.initial()
         state = reduceApp(state, AppEvent.OpenCreate("grapheneos"))

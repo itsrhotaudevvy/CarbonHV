@@ -102,3 +102,21 @@ fn rejects_unknown_critical_key() {
         Err(BundleError::UnknownKey("root_shell".into()))
     );
 }
+
+#[test]
+fn rejects_manifest_without_artifacts() {
+    let bad = valid_manifest()
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("artifact ="))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    assert!(BundleManifest::parse(&bad).is_err());
+}
+
+#[test]
+fn rejects_incompatible_cvd_major() {
+    let bad = valid_manifest().replace("cvd_major = 1", "cvd_major = 2");
+
+    assert!(BundleManifest::parse(&bad).is_err());
+}
