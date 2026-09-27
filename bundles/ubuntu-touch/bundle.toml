@@ -1,0 +1,17 @@
+# Development source manifest. Release CI replaces artifact hashes with built outputs.
+id = "ubuntu-touch"
+display_name = "Ubuntu Touch"
+version = "24.04-dev"
+publisher = "CarbonHV / UBports-derived build"
+release_status = "development"
+guest_arch = "arm64"
+cvd_major = 1
+memory_mib = 3072
+storage_mib = 16384
+requires_hardware_virtualization = true
+requires_gpu_acceleration = true
+backend = "avf"
+integration_profile = "balanced"
+artifact = "boot|out/ubuntu-touch/boot.img|0000000000000000000000000000000000000000000000000000000000000000"
+artifact = "rootfs|out/ubuntu-touch/rootfs.img|0000000000000000000000000000000000000000000000000000000000000000"
+
