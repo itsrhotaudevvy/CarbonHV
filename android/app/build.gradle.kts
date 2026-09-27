@@ -13,6 +13,16 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1.0"
+
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+        }
     }
 
     buildFeatures {
@@ -37,4 +47,3 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 }
-
