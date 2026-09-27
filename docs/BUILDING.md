@@ -186,6 +186,17 @@ Before a host tuple can move beyond development status, integrate and review:
 
 The selected device, Android build fingerprint, kernel, AVF/APEX revision, CarbonHV commit, renderer, and guest builds must be recorded together as one qualification tuple.
 
+### Pinned GPU renderer sources
+
+The first Mali renderer profile is tied to exact upstream inputs. Do not replace these with a branch name or a newer crate version without creating a new qualification tuple:
+
+- crosvm: `88c1385ccb8cb31e8e4d683f580c37057cfc4b48` from `https://chromium.googlesource.com/crosvm/crosvm`;
+- Rutabaga: `rutabaga_gfx = 0.1.80`, the version selected by that crosvm revision, crates.io checksum `2817d168222af3c49269f583dd8e67429912953ae608f715fd97683ed50320a5`;
+- Rutabaga support crate: `magma-gpu = 0.1.80`, matching the crosvm lock, crates.io checksum `002536499cb45b3509c179f42f8c48729364931668f5a2c1bef8c407addaa629`;
+- gfxstream: `ebe5b424e15c0816f64b97c9691060333bb43c7e` from `https://github.com/google/gfxstream`.
+
+`rutabaga_gfx` does not vendor gfxstream. Its `gfxstream` feature links an external `gfxstream_backend`, so Android renderer builds must build that library from the pinned gfxstream revision and pass its library directory through `GFXSTREAM_PATH`. Normal host workspace tests keep the native gfxstream feature disabled and test the renderer profile/selection contract without linking a host gfxstream library.
+
 ## 9. GrapheneOS-derived guest recipe
 
 `guest/android/build.sh` is a Linux-only source-build recipe. It is deliberately distinct from official GrapheneOS device support.

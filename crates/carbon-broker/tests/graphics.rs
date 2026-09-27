@@ -25,12 +25,24 @@ fn renderer_launch_uses_fixed_program_and_argv_without_shell() {
         },
     );
     assert_eq!(plan.profile_id, "gfxstream-vulkan-mali");
+    assert_eq!(plan.backend_entry_point, "rutabaga-gfxstream");
     assert!(
         plan.invocation
             .args
             .iter()
             .all(|arg| !arg.contains(';') && !arg.contains("&&"))
     );
+}
+
+#[test]
+fn renderer_launch_rejects_unregistered_profile_even_with_safe_id() {
+    let mut profile = GpuRendererProfile::gfxstream_vulkan_mali();
+    profile.id = "unknown-renderer".into();
+
+    let err = build_renderer_launch_plan(&profile, PathBuf::from("/data/misc/carbonhv/runtime"))
+        .unwrap_err();
+
+    assert_eq!(err, RendererLaunchError::UnsupportedProfile);
 }
 
 #[test]
