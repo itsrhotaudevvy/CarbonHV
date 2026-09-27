@@ -43,7 +43,10 @@ fn rejects_wrong_caller_identity() {
     let mut wrong = caller();
     wrong.uid = 20_000;
 
-    assert_eq!(broker.start(&wrong, request(1)), Err(RuntimeError::UnauthorizedCaller));
+    assert_eq!(
+        broker.start(&wrong, request(1)),
+        Err(RuntimeError::UnauthorizedCaller)
+    );
 }
 
 #[test]
@@ -60,7 +63,10 @@ fn rejects_kernel_parameter_with_control_characters() {
     let mut bad = request(1);
     bad.kernel_params.push("ok\nreboot".into());
 
-    assert_eq!(broker.start(&caller(), bad), Err(RuntimeError::UnsafeKernelParameter));
+    assert_eq!(
+        broker.start(&caller(), bad),
+        Err(RuntimeError::UnsafeKernelParameter)
+    );
 }
 
 #[test]
@@ -71,7 +77,10 @@ fn rejects_resource_caps_before_runtime_start() {
 
     assert_eq!(
         broker.start(&caller(), too_large),
-        Err(RuntimeError::MemoryLimitExceeded { requested_mib: 8192, max_mib: 6144 })
+        Err(RuntimeError::MemoryLimitExceeded {
+            requested_mib: 8192,
+            max_mib: 6144
+        })
     );
 }
 
@@ -80,7 +89,9 @@ fn rejects_generation_replay_after_instance_advances() {
     let mut broker = Broker::new(policy());
     let first = broker.start(&caller(), request(4)).unwrap();
     assert_eq!(first.generation, Generation(4));
-    broker.stop(&caller(), "vm-demo", Generation(4), 51).unwrap();
+    broker
+        .stop(&caller(), "vm-demo", Generation(4), 51)
+        .unwrap();
 
     assert_eq!(
         broker.start(&caller(), request(4)),
@@ -96,6 +107,12 @@ fn resolves_only_managed_object_ids_under_policy_root() {
     let mut broker = Broker::new(policy());
     let spec = broker.start(&caller(), request(2)).unwrap();
 
-    assert_eq!(spec.kernel, PathBuf::from("/data/misc/carbonhv/objects/kernel-a"));
-    assert_eq!(spec.disks, vec![PathBuf::from("/data/misc/carbonhv/objects/disk-a")]);
+    assert_eq!(
+        spec.kernel,
+        PathBuf::from("/data/misc/carbonhv/objects/kernel-a")
+    );
+    assert_eq!(
+        spec.disks,
+        vec![PathBuf::from("/data/misc/carbonhv/objects/disk-a")]
+    );
 }

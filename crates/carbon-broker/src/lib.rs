@@ -40,11 +40,23 @@ pub enum RuntimeError {
     InvalidInstanceId,
     UnsafeKernelParameter,
     InvalidResourceRequest,
-    MemoryLimitExceeded { requested_mib: u64, max_mib: u64 },
-    VcpuLimitExceeded { requested: u16, max: u16 },
-    StaleGeneration { minimum: Generation, got: Generation },
+    MemoryLimitExceeded {
+        requested_mib: u64,
+        max_mib: u64,
+    },
+    VcpuLimitExceeded {
+        requested: u16,
+        max: u16,
+    },
+    StaleGeneration {
+        minimum: Generation,
+        got: Generation,
+    },
     InstanceNotRunning,
-    GenerationMismatch { expected: Generation, got: Generation },
+    GenerationMismatch {
+        expected: Generation,
+        got: Generation,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -95,9 +107,7 @@ impl Broker {
         }
         if request.kernel_params.len() > 64
             || request.kernel_params.iter().any(|param| {
-                param.is_empty()
-                    || param.len() > 1024
-                    || param.chars().any(char::is_control)
+                param.is_empty() || param.len() > 1024 || param.chars().any(char::is_control)
             })
         {
             return Err(RuntimeError::UnsafeKernelParameter);
@@ -168,8 +178,10 @@ impl Broker {
             });
         }
         self.running.remove(instance_id);
-        self.minimum_generation
-            .insert(instance_id.to_string(), Generation(generation.0.saturating_add(1)));
+        self.minimum_generation.insert(
+            instance_id.to_string(),
+            Generation(generation.0.saturating_add(1)),
+        );
         Ok(())
     }
 

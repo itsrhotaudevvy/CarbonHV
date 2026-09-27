@@ -36,4 +36,3 @@ pub enum VmState {
     Crashed,
     Recovering,
 }
-

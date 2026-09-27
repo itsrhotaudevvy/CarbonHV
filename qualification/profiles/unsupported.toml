@@ -1,0 +1,8 @@
+id = "unsupported"
+arch = "arm64"
+hardware_virtualization = false
+broker_authorized = false
+gpu_acceleration = false
+memory_mib = 8192
+storage_mib = 65536
+

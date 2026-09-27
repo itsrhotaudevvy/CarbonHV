@@ -124,7 +124,8 @@ impl BundleManifest {
         let cvd_major = parse_u32(&values, "cvd_major")?;
         let memory_mib = parse_u64(&values, "memory_mib")?;
         let storage_mib = parse_u64(&values, "storage_mib")?;
-        let requires_hardware_virtualization = parse_bool(&values, "requires_hardware_virtualization")?;
+        let requires_hardware_virtualization =
+            parse_bool(&values, "requires_hardware_virtualization")?;
         let requires_gpu_acceleration = parse_bool(&values, "requires_gpu_acceleration")?;
         if !requires_hardware_virtualization {
             return Err(BundleError::HardwareVirtualizationRequired);
@@ -222,7 +223,12 @@ fn parse_artifact(value: &str) -> Result<BundleArtifact, BundleError> {
     }
     let p = Path::new(path);
     if p.is_absolute()
-        || p.components().any(|component| matches!(component, Component::ParentDir | Component::RootDir | Component::Prefix(_)))
+        || p.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
     {
         return Err(BundleError::UnsafeArtifactPath);
     }
@@ -235,4 +241,3 @@ fn parse_artifact(value: &str) -> Result<BundleArtifact, BundleError> {
         sha256: sha256.to_ascii_lowercase(),
     })
 }
-

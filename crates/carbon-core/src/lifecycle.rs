@@ -17,8 +17,14 @@ pub enum LifecycleAction {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LifecycleError {
-    StaleGeneration { expected: Generation, got: Generation },
-    InvalidTransition { from: VmState, action: LifecycleAction },
+    StaleGeneration {
+        expected: Generation,
+        got: Generation,
+    },
+    InvalidTransition {
+        from: VmState,
+        action: LifecycleAction,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -69,7 +75,10 @@ impl LifecycleMachine {
             (VmState::Paused, LifecycleAction::Resume) => VmState::Running,
             (VmState::Running | VmState::Paused, LifecycleAction::Stop) => VmState::Stopping,
             (VmState::Stopping, LifecycleAction::Stopped) => VmState::Stopped,
-            (VmState::Starting | VmState::Running | VmState::Paused | VmState::Stopping, LifecycleAction::Crash) => VmState::Crashed,
+            (
+                VmState::Starting | VmState::Running | VmState::Paused | VmState::Stopping,
+                LifecycleAction::Crash,
+            ) => VmState::Crashed,
             (VmState::Crashed, LifecycleAction::Recover) => VmState::Recovering,
             (VmState::Recovering, LifecycleAction::Recovered) => VmState::Stopped,
             _ => {
@@ -85,4 +94,3 @@ impl LifecycleMachine {
         Ok(next)
     }
 }
-

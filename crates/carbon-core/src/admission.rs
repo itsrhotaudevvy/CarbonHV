@@ -2,12 +2,21 @@ use crate::{BundleRequirements, CpuArch, HostCapabilities};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AdmissionFailure {
-    ArchitectureMismatch { host: CpuArch, guest: CpuArch },
+    ArchitectureMismatch {
+        host: CpuArch,
+        guest: CpuArch,
+    },
     HardwareVirtualizationUnavailable,
     GpuAccelerationUnavailable,
     BrokerUnauthorized,
-    InsufficientMemory { required_mib: u64, available_mib: u64 },
-    InsufficientStorage { required_mib: u64, available_mib: u64 },
+    InsufficientMemory {
+        required_mib: u64,
+        available_mib: u64,
+    },
+    InsufficientStorage {
+        required_mib: u64,
+        available_mib: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -53,4 +62,3 @@ pub fn admit(host: &HostCapabilities, bundle: &BundleRequirements) -> AdmissionD
         AdmissionDecision::Rejected(failures)
     }
 }
-

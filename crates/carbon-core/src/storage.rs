@@ -84,7 +84,10 @@ pub struct InstallTransaction {
 }
 
 impl InstallTransaction {
-    pub fn begin(bundle_id: impl Into<String>, previous_version: Option<impl Into<String>>) -> Self {
+    pub fn begin(
+        bundle_id: impl Into<String>,
+        previous_version: Option<impl Into<String>>,
+    ) -> Self {
         Self {
             bundle_id: bundle_id.into(),
             previous_version: previous_version.map(Into::into),
@@ -125,4 +128,3 @@ impl InstallTransaction {
         InstallRecovery::NoUsableVersion
     }
 }
-

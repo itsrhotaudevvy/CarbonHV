@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use carbon_broker::{AvfBackend, BackendError, HostVirtualizationClass, ProgramInvocation, ValidatedVmSpec};
+use carbon_broker::{
+    AvfBackend, BackendError, HostVirtualizationClass, ProgramInvocation, ValidatedVmSpec,
+};
 use carbon_core::Generation;
 
 fn spec() -> ValidatedVmSpec {
@@ -31,17 +33,28 @@ fn builds_exact_argv_without_shell_interpolation() {
     let vm_tool = root.join("vm");
     fs::write(&vm_tool, b"tool").unwrap();
     let backend = AvfBackend::new(vm_tool.clone(), root.join("kvm"));
-    let plan = backend.build_launch_plan(&spec(), PathBuf::from("/data/misc/carbonhv/runtime")).unwrap();
+    let plan = backend
+        .build_launch_plan(&spec(), PathBuf::from("/data/misc/carbonhv/runtime"))
+        .unwrap();
 
     assert_eq!(
         plan.invocation,
         ProgramInvocation {
             program: vm_tool,
-            args: vec!["run".into(), "/data/misc/carbonhv/runtime/vm-demo-3.json".into()],
+            args: vec![
+                "run".into(),
+                "/data/misc/carbonhv/runtime/vm-demo-3.json".into()
+            ],
         }
     );
-    assert!(plan.config_json.contains("\"kernel\":\"/data/misc/carbonhv/objects/kernel-a\""));
-    assert!(plan.config_json.contains("\"params\":\"console=hvc0 rdinit=/bin/init\""));
+    assert!(
+        plan.config_json
+            .contains("\"kernel\":\"/data/misc/carbonhv/objects/kernel-a\"")
+    );
+    assert!(
+        plan.config_json
+            .contains("\"params\":\"console=hvc0 rdinit=/bin/init\"")
+    );
     assert!(!plan.config_json.contains("sh -c"));
 }
 
@@ -51,7 +64,9 @@ fn escapes_json_control_characters_without_creating_shell_syntax() {
     let backend = AvfBackend::new(root.join("vm"), root.join("kvm"));
     let mut value = spec();
     value.kernel_params = vec!["androidboot.foo=quote\\\"value".into()];
-    let plan = backend.build_launch_plan(&value, root.join("runtime")).unwrap();
+    let plan = backend
+        .build_launch_plan(&value, root.join("runtime"))
+        .unwrap();
 
     assert!(plan.config_json.contains("quote\\\\\\\"value"));
     assert_eq!(plan.invocation.args.len(), 2);

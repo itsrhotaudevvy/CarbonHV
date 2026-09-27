@@ -91,4 +91,3 @@ impl UpdateTransaction {
         UpdateDecision::BootCurrent(self.current_version.clone())
     }
 }
-

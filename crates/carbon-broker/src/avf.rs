@@ -1,8 +1,6 @@
 use std::path::{Component, PathBuf};
 
-use crate::{
-    BackendError, HostProbe, HostVirtualizationClass, ProgramInvocation, ValidatedVmSpec,
-};
+use crate::{BackendError, HostProbe, HostVirtualizationClass, ProgramInvocation, ValidatedVmSpec};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvfLaunchPlan {
@@ -52,14 +50,22 @@ impl AvfBackend {
             return Err(BackendError::UnsafeRuntimeDirectory);
         }
 
-        let config_path = runtime_dir.join(format!(
-            "{}-{}.json",
-            spec.instance_id, spec.generation.0
-        ));
+        let config_path =
+            runtime_dir.join(format!("{}-{}.json", spec.instance_id, spec.generation.0));
         let params = spec.kernel_params.join(" ");
         let mut config_json = String::from("{");
-        push_json_field(&mut config_json, "kernel", &spec.kernel.to_string_lossy(), true);
-        push_json_field(&mut config_json, "initrd", &spec.initrd.to_string_lossy(), false);
+        push_json_field(
+            &mut config_json,
+            "kernel",
+            &spec.kernel.to_string_lossy(),
+            true,
+        );
+        push_json_field(
+            &mut config_json,
+            "initrd",
+            &spec.initrd.to_string_lossy(),
+            false,
+        );
         push_json_field(&mut config_json, "params", &params, false);
         config_json.push_str(",\"memory_mib\":");
         config_json.push_str(&spec.memory_mib.to_string());
@@ -116,4 +122,3 @@ fn json_escape(value: &str) -> String {
     }
     escaped
 }
-
