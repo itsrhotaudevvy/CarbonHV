@@ -1,7 +1,9 @@
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use carbon_core::GpuRendererProfile;
-use carbon_renderer::renderer_entry_point;
+use carbon_renderer::{
+    PRESENTATION_FD, RENDERER_RUNTIME_ROOT, VIRTIO_GPU_FD, renderer_entry_point,
+};
 
 use crate::ProgramInvocation;
 
@@ -11,6 +13,8 @@ pub struct RendererLaunchPlan {
     pub runtime_dir: PathBuf,
     pub profile_id: String,
     pub backend_entry_point: String,
+    pub virtio_gpu_fd: i32,
+    pub presentation_fd: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,9 +28,11 @@ pub fn build_renderer_launch_plan(
     profile: &GpuRendererProfile,
     runtime_dir: PathBuf,
 ) -> Result<RendererLaunchPlan, RendererLaunchError> {
-    if runtime_dir
-        .components()
-        .any(|component| matches!(component, Component::ParentDir))
+    if !runtime_dir.is_absolute()
+        || !runtime_dir.starts_with(Path::new(RENDERER_RUNTIME_ROOT))
+        || runtime_dir
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
     {
         return Err(RendererLaunchError::UnsafeRuntimeDirectory);
     }
@@ -48,10 +54,16 @@ pub fn build_renderer_launch_plan(
                 profile.id.clone(),
                 "--runtime-dir".into(),
                 runtime_dir.to_string_lossy().into_owned(),
+                "--virtio-gpu-fd".into(),
+                VIRTIO_GPU_FD.to_string(),
+                "--presentation-fd".into(),
+                PRESENTATION_FD.to_string(),
             ],
         },
         runtime_dir,
         profile_id: profile.id.clone(),
         backend_entry_point: entry.backend.into(),
+        virtio_gpu_fd: VIRTIO_GPU_FD,
+        presentation_fd: PRESENTATION_FD,
     })
 }
