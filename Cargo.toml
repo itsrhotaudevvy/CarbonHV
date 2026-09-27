@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/carbon-core",
+    "crates/carbon-cli",
 ]
 resolver = "2"
 

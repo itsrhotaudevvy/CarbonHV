@@ -1,0 +1,17 @@
+# Development source manifest. Release CI replaces artifact hashes with built outputs.
+id = "grapheneos"
+display_name = "GrapheneOS (CarbonHV virtual-device build)"
+version = "2026.09.27-dev"
+publisher = "CarbonHV"
+release_status = "development"
+guest_arch = "arm64"
+cvd_major = 1
+memory_mib = 4096
+storage_mib = 24576
+requires_hardware_virtualization = true
+requires_gpu_acceleration = true
+backend = "avf"
+integration_profile = "private"
+artifact = "boot|out/grapheneos/boot.img|0000000000000000000000000000000000000000000000000000000000000000"
+artifact = "system|out/grapheneos/system.img|0000000000000000000000000000000000000000000000000000000000000000"
+
