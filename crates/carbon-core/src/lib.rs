@@ -16,7 +16,8 @@ pub use bundle::{BundleArtifact, BundleError, BundleManifest, IntegrationProfile
 pub use graphics::{
     CapabilityEvidence, GpuHostCapabilities, GpuIdentity, GpuQualificationTuple,
     GpuRendererProfile, GraphicsCapability, HostGraphicsApi, QualificationRecord, RendererFamily,
-    RendererSelection, RendererSelectionMode, qualification_applies, select_renderer,
+    RendererQualification, RendererSelection, RendererSelectionMode, qualification_applies,
+    select_renderer,
 };
 pub use guest::{GuestContract, GuestContractError, GuestOsFamily};
 pub use lifecycle::{LifecycleAction, LifecycleError, LifecycleMachine};

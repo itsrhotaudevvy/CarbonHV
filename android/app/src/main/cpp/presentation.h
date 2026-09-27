@@ -3,8 +3,14 @@
 #include <jni.h>
 
 #include <cstdint>
+#include <vector>
 
 namespace carbonhv::graphics {
+
+struct ReleasedFrame {
+    std::int64_t frame_id;
+    std::int32_t release_fence_fd;
+};
 
 class PresentationSession {
   public:
@@ -42,6 +48,8 @@ class PresentationSession {
         std::int64_t generation) noexcept;
 
     void release_frame(std::int64_t frame_id) noexcept;
+
+    std::vector<ReleasedFrame> drain_released_frames() noexcept;
 
   private:
     struct Impl;

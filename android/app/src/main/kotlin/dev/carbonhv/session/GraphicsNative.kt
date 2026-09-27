@@ -13,6 +13,11 @@ data class NativeBufferSupport(
     val usage: Long,
 )
 
+data class NativeFrameRelease(
+    val frameId: Long,
+    val releaseFenceFd: Int,
+)
+
 data class NativeGpuProbe(
     val gpuName: String?,
     val vulkanApiVersion: String?,
@@ -81,6 +86,15 @@ object GraphicsNative {
         if (libraryLoaded) runCatching { nativeReleaseFrame(frameId) }
     }
 
+    internal fun drainReleasedFrames(): List<NativeFrameRelease> {
+        if (!libraryLoaded) return emptyList()
+        val values = runCatching { nativeDrainReleasedFrames() }.getOrNull() ?: return emptyList()
+        if (values.size % 2 != 0) return emptyList()
+        return values.asList().chunked(2).map { pair ->
+            NativeFrameRelease(frameId = pair[0], releaseFenceFd = pair[1].toInt())
+        }
+    }
+
     private external fun nativeProbe(): NativeGpuProbe?
     private external fun nativeAttachSurface(
         surface: Surface,
@@ -106,4 +120,5 @@ object GraphicsNative {
         generation: Long,
     ): Boolean
     private external fun nativeReleaseFrame(frameId: Long)
+    private external fun nativeDrainReleasedFrames(): LongArray?
 }

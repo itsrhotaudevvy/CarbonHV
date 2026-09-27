@@ -34,6 +34,7 @@ internal interface GraphicsPresentationBackend {
     fun detachSurface(generation: Long)
     fun presentFrame(frame: NativeFrame, generation: Long): Boolean
     fun releaseFrame(frameId: Long)
+    fun drainReleasedFrames(): List<NativeFrameRelease>
 }
 
 internal object JniGraphicsPresentationBackend : GraphicsPresentationBackend {
@@ -53,6 +54,8 @@ internal object JniGraphicsPresentationBackend : GraphicsPresentationBackend {
     override fun releaseFrame(frameId: Long) {
         GraphicsNative.releaseFrame(frameId)
     }
+
+    override fun drainReleasedFrames(): List<NativeFrameRelease> = GraphicsNative.drainReleasedFrames()
 }
 
 class GraphicsSession internal constructor(
@@ -123,23 +126,26 @@ class GraphicsSession internal constructor(
         return PresentResult.Presented
     }
 
-    fun onFrameReleased(frameId: Long) {
-        if (inFlightFrameIds.remove(frameId)) {
-            backend.releaseFrame(frameId)
-        }
+    /**
+     * Transfers SurfaceFlinger's release completion and release-fence ownership to the renderer
+     * side. A non-negative releaseFenceFd is owned by the caller after this method returns.
+     */
+    fun drainReleasedFrames(): List<NativeFrameRelease> {
+        val released = backend.drainReleasedFrames()
+        released.forEach { inFlightFrameIds.remove(it.frameId) }
+        return released
     }
 
     fun rendererCrashed() {
-        releaseAllFrameLeases()
+        cancelAllFrameLeases()
     }
 
     private fun advancePresentationGeneration() {
-        releaseAllFrameLeases()
         presentationGeneration += 1
         lastAcceptedSequence = Long.MIN_VALUE
     }
 
-    private fun releaseAllFrameLeases() {
+    private fun cancelAllFrameLeases() {
         val frameIds = inFlightFrameIds.toList()
         inFlightFrameIds.clear()
         frameIds.forEach(backend::releaseFrame)

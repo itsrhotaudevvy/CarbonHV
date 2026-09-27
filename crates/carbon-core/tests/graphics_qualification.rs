@@ -14,8 +14,8 @@ fn tuple() -> GpuQualificationTuple {
         renderer_id: "gfxstream-vulkan-mali".into(),
         renderer_version: "renderer-a".into(),
         graphics_driver_version: "226504704".into(),
-        guest_bundle_id: "grapheneos-derived".into(),
-        guest_bundle_version: "guest-a".into(),
+        android_guest_bundle_version: "android-a".into(),
+        ubuntu_touch_guest_bundle_version: "ubuntu-touch-a".into(),
         cvd_major: 1,
         display_mode: "1080x2400@90".into(),
         workload_version: "gpu-workload-v1".into(),
@@ -55,8 +55,12 @@ fn material_tuple_changes_invalidate_qualification() {
             Box::new(|v| v.renderer_version = "different".into()),
         ),
         (
-            "guest",
-            Box::new(|v| v.guest_bundle_version = "different".into()),
+            "Android guest",
+            Box::new(|v| v.android_guest_bundle_version = "different".into()),
+        ),
+        (
+            "Ubuntu Touch guest",
+            Box::new(|v| v.ubuntu_touch_guest_bundle_version = "different".into()),
         ),
         ("CVD", Box::new(|v| v.cvd_major = 2)),
         (
