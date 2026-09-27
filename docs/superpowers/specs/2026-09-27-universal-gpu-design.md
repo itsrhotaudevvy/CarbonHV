@@ -50,11 +50,11 @@ guest app
   -> guest GLES/Vulkan implementation
   -> guest compositor
   -> virtio-gpu protocol
-  -> Rutabaga renderer boundary
-  -> selected renderer backend
+  -> AVF/crosvm Rutabaga renderer boundary
+  -> selected renderer backend (gfxstream for initial Mali profile)
   -> host Vulkan/EGL provider
-  -> native Android buffer
-  -> CarbonHV presentation backend
+  -> crosvm Android display backend / native Android buffer
+  -> ICrosvmAndroidDisplayService surface handoff
   -> SurfaceView
   -> SurfaceFlinger
 ```
@@ -93,7 +93,7 @@ CarbonHV introduces a renderer abstraction above the concrete graphics implement
 
 The first profile is `gfxstream-vulkan-mali`.
 
-Rutabaga is the preferred host abstraction because it keeps the VMM-facing virtual GPU device independent from the renderer backend. CarbonHV must not expose raw renderer-specific command surfaces through its privileged broker API.
+Rutabaga is the preferred host abstraction because it keeps the VMM-facing virtual GPU device independent from the renderer backend. For the initial Android 17 Mali path, Rutabaga/gfxstream remains owned by AVF/crosvm; CarbonHV configures it through AVF rather than launching a second renderer process. CarbonHV must not expose raw renderer-specific command surfaces through its privileged broker API.
 
 ### 4.3 Host provider probing
 

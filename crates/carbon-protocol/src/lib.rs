@@ -54,13 +54,19 @@ pub struct VmResources {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VmDiskRequest {
+    pub object_id: ManagedObjectId,
+    pub writable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VmStartRequest {
     pub request_id: u64,
     pub instance_id: String,
     pub generation: Generation,
     pub kernel: ManagedObjectId,
     pub initrd: ManagedObjectId,
-    pub disks: Vec<ManagedObjectId>,
+    pub disks: Vec<VmDiskRequest>,
     pub resources: VmResources,
     pub kernel_params: Vec<String>,
 }

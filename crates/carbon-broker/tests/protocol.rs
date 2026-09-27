@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
-use carbon_broker::{Broker, BrokerPolicy, RuntimeError};
+use carbon_broker::{Broker, BrokerPolicy, RuntimeError, ValidatedVmDisk};
 use carbon_core::Generation;
-use carbon_protocol::{CallerIdentity, ManagedObjectId, VmResources, VmStartRequest};
+use carbon_protocol::{
+    CallerIdentity, ManagedObjectId, VmDiskRequest, VmResources, VmStartRequest,
+};
 
 fn policy() -> BrokerPolicy {
     BrokerPolicy {
@@ -28,7 +30,10 @@ fn request(generation: u64) -> VmStartRequest {
         generation: Generation(generation),
         kernel: ManagedObjectId::new("kernel-a").unwrap(),
         initrd: ManagedObjectId::new("initrd-a").unwrap(),
-        disks: vec![ManagedObjectId::new("disk-a").unwrap()],
+        disks: vec![VmDiskRequest {
+            object_id: ManagedObjectId::new("disk-a").unwrap(),
+            writable: true,
+        }],
         resources: VmResources {
             memory_mib: 4096,
             vcpus: 4,
@@ -113,7 +118,10 @@ fn resolves_only_managed_object_ids_under_policy_root() {
     );
     assert_eq!(
         spec.disks,
-        vec![PathBuf::from("/data/misc/carbonhv/objects/disk-a")]
+        vec![ValidatedVmDisk {
+            path: PathBuf::from("/data/misc/carbonhv/objects/disk-a"),
+            writable: true,
+        }]
     );
 }
 

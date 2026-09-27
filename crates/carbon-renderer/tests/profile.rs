@@ -73,11 +73,11 @@ fn missing_native_buffer_or_explicit_sync_is_rejected() {
 }
 
 #[test]
-fn renderer_has_one_fixed_executable_and_backend_entry_point() {
+fn renderer_uses_avf_crosvm_owned_gfxstream_integration() {
     let backend = gfxstream_vulkan_mali_backend();
 
-    assert_eq!(backend.entry.executable, "/system/bin/carbon-renderer");
-    assert_eq!(backend.entry.backend, GFXSTREAM_MALI_ENTRY_POINT);
+    assert_eq!(backend.integration.owner, "avf-crosvm");
+    assert_eq!(backend.integration.backend, GFXSTREAM_MALI_ENTRY_POINT);
 }
 
 #[test]

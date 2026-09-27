@@ -2,7 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use carbon_broker::{
-    AvfBackend, BackendError, HostVirtualizationClass, ProgramInvocation, ValidatedVmSpec,
+    AvfBackend, AvfGraphicsConfig, BackendError, HostVirtualizationClass, ProgramInvocation,
+    ValidatedVmDisk, ValidatedVmSpec,
 };
 use carbon_core::Generation;
 
@@ -13,7 +14,16 @@ fn spec() -> ValidatedVmSpec {
         generation: Generation(3),
         kernel: PathBuf::from("/data/misc/carbonhv/objects/kernel-a"),
         initrd: PathBuf::from("/data/misc/carbonhv/objects/initrd-a"),
-        disks: vec![PathBuf::from("/data/misc/carbonhv/objects/disk-a")],
+        disks: vec![
+            ValidatedVmDisk {
+                path: PathBuf::from("/data/misc/carbonhv/objects/system-a"),
+                writable: false,
+            },
+            ValidatedVmDisk {
+                path: PathBuf::from("/data/misc/carbonhv/objects/data-a"),
+                writable: true,
+            },
+        ],
         memory_mib: 4096,
         vcpus: 4,
         kernel_params: vec!["console=hvc0".into(), "rdinit=/bin/init".into()],
@@ -55,7 +65,58 @@ fn builds_exact_argv_without_shell_interpolation() {
         plan.config_json
             .contains("\"params\":\"console=hvc0 rdinit=/bin/init\"")
     );
+    assert!(plan.config_json.contains(
+        "\"disks\":[{\"image\":\"/data/misc/carbonhv/objects/system-a\",\"writable\":false,\"partitions\":[]},{\"image\":\"/data/misc/carbonhv/objects/data-a\",\"writable\":true,\"partitions\":[]}]"
+    ));
     assert!(!plan.config_json.contains("sh -c"));
+}
+
+#[test]
+fn graphics_launch_plan_uses_android17_gfxstream_and_native_input_contract() {
+    let root = temp_root("graphics");
+    let vm_tool = root.join("vm");
+    fs::write(&vm_tool, b"tool").unwrap();
+    let backend = AvfBackend::new(vm_tool, root.join("kvm"));
+    let graphics = AvfGraphicsConfig::gfxstream_vulkan(1080, 2400, 90).unwrap();
+    let plan = backend
+        .build_graphics_launch_plan(
+            &spec(),
+            PathBuf::from("/data/misc/carbonhv/runtime"),
+            graphics,
+        )
+        .unwrap();
+
+    assert!(plan.config_json.contains("\"backend\":\"gfxstream\""));
+    assert!(plan.config_json.contains("\"renderer_use_egl\":false"));
+    assert!(plan.config_json.contains("\"renderer_use_gles\":false"));
+    assert!(plan.config_json.contains("\"renderer_use_glx\":false"));
+    assert!(
+        plan.config_json
+            .contains("\"renderer_use_surfaceless\":true")
+    );
+    assert!(plan.config_json.contains("\"renderer_use_vulkan\":true"));
+    assert!(
+        plan.config_json
+            .contains("\"context_types\":[\"gfxstream-vulkan\",\"gfxstream-composer\"]")
+    );
+    assert!(plan.config_json.contains(
+        "\"display\":{\"width_pixels\":1080,\"height_pixels\":2400,\"refresh_rate\":90}"
+    ));
+    assert!(plan.config_json.contains(
+        "\"input\":{\"touchscreen\":true,\"keyboard\":true,\"mouse\":true,\"trackpad\":false,\"switches\":false}"
+    ));
+}
+
+#[test]
+fn graphics_config_rejects_invalid_geometry_or_refresh_rate() {
+    assert_eq!(
+        AvfGraphicsConfig::gfxstream_vulkan(0, 2400, 90),
+        Err(BackendError::InvalidGraphicsConfig),
+    );
+    assert_eq!(
+        AvfGraphicsConfig::gfxstream_vulkan(1080, 2400, 0),
+        Err(BackendError::InvalidGraphicsConfig),
+    );
 }
 
 #[test]

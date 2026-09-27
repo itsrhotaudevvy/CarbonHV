@@ -22,4 +22,5 @@ pub struct HostProbe {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendError {
     UnsafeRuntimeDirectory,
+    InvalidGraphicsConfig,
 }

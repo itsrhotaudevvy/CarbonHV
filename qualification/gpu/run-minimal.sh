@@ -13,7 +13,7 @@ usage:
 
 Fixture mode is deterministic and never counts as physical qualification.
 Physical mode performs read-only host probing and combines it with evidence captured from the
-guest virtio-gpu -> carbon-renderer -> Android presentation path.
+guest virtio-gpu -> AVF/crosvm Rutabaga+gfxstream -> Android display-service path.
 The --renderer form performs the physical bring-up preflight and emits an EXPERIMENTAL blocker
 report when the guest/renderer path cannot yet be launched end to end.
 EOF
@@ -151,9 +151,7 @@ elif [[ -n "$serial" && -n "$renderer" && -z "$evidence" && -z "$fixture" && "$d
   for artifact in out/grapheneos/boot.img out/grapheneos/system.img; do
     [[ -f "$repo_root/$artifact" ]] || blockers+=("missing-$artifact")
   done
-  renderer_present="$(adb -s "$serial" shell 'if [ -x /system/bin/carbon-renderer ]; then echo yes; else echo no; fi' 2>/dev/null | tr -d '\r')"
-  [[ "$renderer_present" == yes ]] || blockers+=("carbon-renderer-not-installed")
-  blockers+=("avf-renderer-resource-transport-not-wired")
+  blockers+=("avf-display-surface-handoff-not-wired")
 
   guest_version="$(awk -F= '$1 ~ /^[[:space:]]*version[[:space:]]*$/ { value=$2; gsub(/^[[:space:]\"]+|[[:space:]\"]+$/, "", value); print value; exit }' "$repo_root/bundles/grapheneos/bundle.toml")"
   [[ -n "$guest_version" ]] || guest_version=unknown
