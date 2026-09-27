@@ -1,10 +1,16 @@
 #![forbid(unsafe_code)]
 
+mod avf;
+mod backend;
+
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use carbon_core::Generation;
 use carbon_protocol::{CallerIdentity, VmStartRequest};
+
+pub use avf::{AvfBackend, AvfLaunchPlan};
+pub use backend::{BackendError, HostProbe, HostVirtualizationClass, ProgramInvocation};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrokerPolicy {
