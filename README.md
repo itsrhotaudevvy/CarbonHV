@@ -93,7 +93,7 @@ qualification/carbon-qualify.sh --adb <serial>
 
 The ADB probe checks the host ABI, the AVF `vm` tool, and `/dev/kvm`. Even when all three are present, the result stays `EXPERIMENTAL` until physical GPU/display qualification is completed with a real guest workload.
 
-The current Pixel 7a Mali profile is intentionally uncalibrated. `qualification/gpu/run-sustained.sh --adb <serial> --minutes 30` is the fail-closed bring-up preflight. Once real starter-guest frames and a measured baseline exist, the ADB+evidence form re-probes the live host and can qualify only when the calibrated exact tuple and every sustained threshold match. The recorded 2026-09-27 attempt is blocked before the sustained workload because the GrapheneOS-derived guest artifacts are absent, `carbon-renderer` is not installed on the host, and AVF renderer/resource transport is not yet wired.
+The current Pixel 7a Mali profile is intentionally uncalibrated. `qualification/gpu/run-sustained.sh --adb <serial> --minutes 30` is the fail-closed bring-up preflight. Once real starter-guest frames and a measured baseline exist, the ADB+evidence form re-probes the live host and can qualify only when the calibrated exact tuple and every sustained threshold match. The recorded 2026-09-27 attempt is blocked before the sustained workload because the GrapheneOS-derived guest artifacts are absent and CarbonHV has not yet handed its live `SurfaceView` to AVF/crosvm's Android display service.
 
 ## Guest builds
 

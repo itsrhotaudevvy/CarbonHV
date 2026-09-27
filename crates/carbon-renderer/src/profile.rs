@@ -2,12 +2,12 @@ use carbon_core::{GpuHostCapabilities, GpuRendererProfile, GraphicsCapability};
 
 use crate::RutabagaConfig;
 
-pub const RENDERER_EXECUTABLE: &str = "/system/bin/carbon-renderer";
 pub const GFXSTREAM_MALI_ENTRY_POINT: &str = "rutabaga-gfxstream";
+pub const AVF_CROSVM_OWNER: &str = "avf-crosvm";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RendererEntryPoint {
-    pub executable: &'static str,
+pub struct RendererIntegrationPoint {
+    pub owner: &'static str,
     pub backend: &'static str,
 }
 
@@ -22,7 +22,7 @@ pub struct RendererSandboxPolicy {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RendererBackendProfile {
     pub profile: GpuRendererProfile,
-    pub entry: RendererEntryPoint,
+    pub integration: RendererIntegrationPoint,
     pub sandbox: RendererSandboxPolicy,
     pub rutabaga: RutabagaConfig,
 }
@@ -57,8 +57,8 @@ impl RendererBackendProfile {
 pub fn gfxstream_vulkan_mali_backend() -> RendererBackendProfile {
     RendererBackendProfile {
         profile: GpuRendererProfile::gfxstream_vulkan_mali(),
-        entry: RendererEntryPoint {
-            executable: RENDERER_EXECUTABLE,
+        integration: RendererIntegrationPoint {
+            owner: AVF_CROSVM_OWNER,
             backend: GFXSTREAM_MALI_ENTRY_POINT,
         },
         sandbox: RendererSandboxPolicy {
@@ -68,15 +68,5 @@ pub fn gfxstream_vulkan_mali_backend() -> RendererBackendProfile {
             allow_gpu_device: true,
         },
         rutabaga: RutabagaConfig::gfxstream_vulkan(),
-    }
-}
-
-pub fn renderer_entry_point(profile_id: &str) -> Option<RendererEntryPoint> {
-    match profile_id {
-        "gfxstream-vulkan-mali" => Some(RendererEntryPoint {
-            executable: RENDERER_EXECUTABLE,
-            backend: GFXSTREAM_MALI_ENTRY_POINT,
-        }),
-        _ => None,
     }
 }

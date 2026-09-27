@@ -14,7 +14,6 @@ version = "0.1.0"
 dependencies = [
  "carbon-core",
  "carbon-protocol",
- "carbon-renderer",
 ]
 
 [[package]]

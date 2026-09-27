@@ -10,12 +10,9 @@ use std::path::PathBuf;
 use carbon_core::Generation;
 use carbon_protocol::{CallerIdentity, VmStartRequest};
 
-pub use avf::{AvfBackend, AvfLaunchPlan};
+pub use avf::{AvfBackend, AvfGraphicsConfig, AvfLaunchPlan};
 pub use backend::{BackendError, HostProbe, HostVirtualizationClass, ProgramInvocation};
-pub use graphics::{
-    GraphicsHandleLeaseError, GraphicsHandleLeaseTable, GraphicsHandleToken, RendererLaunchError,
-    RendererLaunchPlan, build_renderer_launch_plan,
-};
+pub use graphics::{GraphicsHandleLeaseError, GraphicsHandleLeaseTable, GraphicsHandleToken};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrokerPolicy {
@@ -27,13 +24,19 @@ pub struct BrokerPolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatedVmDisk {
+    pub path: PathBuf,
+    pub writable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidatedVmSpec {
     pub request_id: u64,
     pub instance_id: String,
     pub generation: Generation,
     pub kernel: PathBuf,
     pub initrd: PathBuf,
-    pub disks: Vec<PathBuf>,
+    pub disks: Vec<ValidatedVmDisk>,
     pub memory_mib: u64,
     pub vcpus: u16,
     pub kernel_params: Vec<String>,
@@ -155,7 +158,10 @@ impl Broker {
             disks: request
                 .disks
                 .iter()
-                .map(|disk| self.policy.managed_root.join(disk.as_str()))
+                .map(|disk| ValidatedVmDisk {
+                    path: self.policy.managed_root.join(disk.object_id.as_str()),
+                    writable: disk.writable,
+                })
                 .collect(),
             memory_mib: request.resources.memory_mib,
             vcpus: request.resources.vcpus,

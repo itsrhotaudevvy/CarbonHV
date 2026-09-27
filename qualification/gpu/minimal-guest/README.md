@@ -5,7 +5,7 @@ The minimal workload is an ARM64 guest workload, executed inside a CVD1 VM. It m
 For each run, collect a normalized `key=value` evidence file containing the non-host fields in `schema/report-v1.txt`. The renderer/presentation instrumentation must establish all of the following before setting `hardware_render_evidence=positive`:
 
 1. The guest reports `guest_gpu_transport=virtio-gpu` and successfully completes its Vulkan workload.
-2. `carbon-renderer` identifies the selected `gfxstream-vulkan-mali` backend and the host Vulkan physical device.
+2. AVF/crosvm identifies the selected `gfxstream-vulkan-mali` policy as its integrated Rutabaga/gfxstream backend and records the host Vulkan physical device.
 3. A host GPU activity source changes while the guest workload runs. Record the source in `hardware_render_source` and the observed delta in `host_gpu_busy_delta_pct`; a renderer trace that proves Vulkan submission may be combined with the counter source.
 4. The frame reaches CarbonHV's Android presentation path, incrementing `native_buffer_presented_frames`.
 5. Explicit synchronization is observed as `explicit_sync_evidence=positive`.
