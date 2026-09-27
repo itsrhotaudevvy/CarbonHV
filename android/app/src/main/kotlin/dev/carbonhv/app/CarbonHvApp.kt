@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import dev.carbonhv.domain.AdmissionText
 import dev.carbonhv.domain.HostStatus
 import dev.carbonhv.domain.RecoveryPolicy
+import dev.carbonhv.session.ImmersiveSessionScreen
 
 @Composable
 fun CarbonHvApp() {
@@ -59,7 +60,7 @@ fun CarbonHvApp() {
                     AppScreen.Catalog -> CatalogScreen(state, dispatch, padding)
                     AppScreen.Create -> CreateScreen(state, dispatch, padding)
                     AppScreen.Settings -> SettingsScreen(padding)
-                    AppScreen.Session -> SessionPlaceholder(state, dispatch, padding)
+                    AppScreen.Session -> SessionScreen(state, dispatch)
                     AppScreen.Recovery -> RecoveryScreen(state, dispatch, padding)
                 }
             }
@@ -207,20 +208,12 @@ private fun SettingsScreen(padding: PaddingValues) {
 }
 
 @Composable
-private fun SessionPlaceholder(state: AppState, dispatch: (AppEvent) -> Unit, padding: PaddingValues) {
+private fun SessionScreen(state: AppState, dispatch: (AppEvent) -> Unit) {
     val instance = state.instances.firstOrNull { it.id == state.activeInstanceId }
-    Box(
-        modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(instance?.name ?: "Session", style = MaterialTheme.typography.headlineMedium)
-            Spacer(Modifier.height(8.dp))
-            Text("Guest display surface is initialized by the session controller.")
-            Spacer(Modifier.height(20.dp))
-            Button(onClick = { dispatch(AppEvent.LeaveSession) }) { Text("Back to Android") }
-        }
-    }
+    ImmersiveSessionScreen(
+        instanceName = instance?.name ?: "Session",
+        onLeave = { dispatch(AppEvent.LeaveSession) },
+    )
 }
 
 @Composable
@@ -234,4 +227,3 @@ private fun RecoveryScreen(state: AppState, dispatch: (AppEvent) -> Unit, paddin
         Button(onClick = { dispatch(AppEvent.OpenLibrary) }) { Text("Return to library") }
     }
 }
-
