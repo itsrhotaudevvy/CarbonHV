@@ -8,6 +8,7 @@ ready_output="$($qualify --profile "$repo_root/qualification/profiles/reference-
 grep -Fq 'qualification=READY' <<<"$ready_output"
 grep -Fq 'cpu=hardware-virtualized' <<<"$ready_output"
 grep -Fq 'graphics=accelerated' <<<"$ready_output"
+! grep -Fq 'gpu_renderer=' <<<"$ready_output"
 
 set +e
 unsupported_output="$($qualify --profile "$repo_root/qualification/profiles/unsupported.toml" --dry-run 2>&1)"
