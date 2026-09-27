@@ -2,7 +2,7 @@ use std::env;
 use std::fs;
 use std::process::ExitCode;
 
-use carbon_core::BundleManifest;
+use carbon_core::{BundleManifest, GuestContract};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -31,8 +31,30 @@ fn main() -> ExitCode {
                 ExitCode::from(3)
             }
         }
+    } else if args.len() == 4 && args[1] == "guest" && args[2] == "verify" {
+        let path = &args[3];
+        let text = match fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(error) => {
+                eprintln!("failed to read {path}: {error}");
+                return ExitCode::from(2);
+            }
+        };
+        match GuestContract::parse(&text, 1) {
+            Ok(contract) => {
+                println!(
+                    "verified guest {} (cvd {}, agent protocol {})",
+                    contract.id, contract.cvd_major, contract.agent_protocol_major
+                );
+                ExitCode::SUCCESS
+            }
+            Err(error) => {
+                eprintln!("invalid guest contract: {error:?}");
+                ExitCode::from(3)
+            }
+        }
     } else {
-        eprintln!("usage: carbonctl bundle verify <bundle.toml>");
+        eprintln!("usage: carbonctl bundle verify <bundle.toml> | guest verify <device.toml>");
         ExitCode::from(64)
     }
 }
