@@ -2,6 +2,7 @@
 
 mod avf;
 mod backend;
+mod graphics;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -11,6 +12,10 @@ use carbon_protocol::{CallerIdentity, VmStartRequest};
 
 pub use avf::{AvfBackend, AvfLaunchPlan};
 pub use backend::{BackendError, HostProbe, HostVirtualizationClass, ProgramInvocation};
+pub use graphics::{
+    GraphicsHandleLeaseError, GraphicsHandleLeaseTable, GraphicsHandleToken, RendererLaunchError,
+    RendererLaunchPlan, build_renderer_launch_plan,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrokerPolicy {
