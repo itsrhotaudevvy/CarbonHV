@@ -116,3 +116,19 @@ fn resolves_only_managed_object_ids_under_policy_root() {
         vec![PathBuf::from("/data/misc/carbonhv/objects/disk-a")]
     );
 }
+
+#[test]
+fn rejects_second_start_while_instance_is_already_running() {
+    let mut broker = Broker::new(policy());
+    broker.start(&caller(), request(7)).unwrap();
+
+    let mut replacement = request(8);
+    replacement.request_id = 51;
+
+    assert_eq!(
+        broker.start(&caller(), replacement),
+        Err(RuntimeError::InstanceAlreadyRunning {
+            generation: Generation(7),
+        })
+    );
+}

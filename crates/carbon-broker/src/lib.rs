@@ -52,6 +52,9 @@ pub enum RuntimeError {
         minimum: Generation,
         got: Generation,
     },
+    InstanceAlreadyRunning {
+        generation: Generation,
+    },
     InstanceNotRunning,
     GenerationMismatch {
         expected: Generation,
@@ -119,6 +122,9 @@ impl Broker {
             {
                 return Ok(existing.spec.clone());
             }
+            return Err(RuntimeError::InstanceAlreadyRunning {
+                generation: existing.generation,
+            });
         }
 
         let minimum = self

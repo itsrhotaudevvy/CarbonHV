@@ -25,6 +25,11 @@ fn healthy_candidate_can_commit_and_become_current() {
         tx.recover_after_interrupt(),
         UpdateDecision::BootCurrent("2026.09.27".into())
     );
+
+    assert_eq!(
+        tx.rollback_decision(),
+        Ok(UpdateDecision::RollbackTo("2026.09.01".into()))
+    );
 }
 
 #[test]
@@ -32,6 +37,7 @@ fn rollback_is_blocked_after_incompatible_data_migration() {
     let mut tx = UpdateTransaction::begin("2026.09.01", 4);
     tx.stage_verified("2026.09.27", 5).unwrap();
     tx.mark_candidate_healthy().unwrap();
+    tx.commit().unwrap();
 
     assert_eq!(
         tx.rollback_decision(),
