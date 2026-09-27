@@ -2,6 +2,8 @@
 members = [
     "crates/carbon-core",
     "crates/carbon-cli",
+    "crates/carbon-protocol",
+    "crates/carbon-broker",
 ]
 resolver = "2"
 
@@ -9,4 +11,3 @@ resolver = "2"
 edition = "2024"
 license = "Apache-2.0"
 rust-version = "1.90"
-
