@@ -1,0 +1,163 @@
+# CarbonHV support matrix and architecture coverage
+
+**Evidence date:** 2026-09-27  
+**Repository channel:** development / pre-release  
+**Supported CarbonHV v1 release:** **No**
+
+This matrix reports what the current repository proves. It intentionally separates host-independent source tests, a static physical-host capability probe, integration templates, guest build recipes, and full hardware qualification.
+
+Status vocabulary:
+
+- **Verified** — exercised by an automated repository test/build in this implementation.
+- **Observed** — measured directly on the named physical host, but not enough for full qualification.
+- **Partial** — meaningful implementation exists, but required integration or end-to-end evidence is missing.
+- **Recipe only** — source/build contract exists; no claim that the full guest artifact was built and booted here.
+- **Unverified** — architecture requirement has no qualifying runtime evidence yet.
+- **Excluded v1** — deliberately outside the mandatory v1 scope.
+
+## 1. Host-independent implementation status
+
+| Area | Status | Current evidence | Remaining gate |
+| --- | --- | --- | --- |
+| ARM64-only admission / no CPU emulation fallback | Verified | Rust admission + bundle tests reject cross-ISA, missing virtualization, and emulation-capable runtime metadata | Physical backend must still boot an actual ARM64 guest |
+| Lifecycle generation/state model | Verified | Rust lifecycle tests cover legal transitions, stale generations, idempotent requests, single disk writer | Wire to real platform service/runtime and test process death |
+| Bundle manifest parsing | Verified | Strict parser and both starter manifests pass `carbonctl bundle verify` | Production signatures/catalog trust not implemented |
+| CVD1 virtual-device contracts | Verified | Contract tests cover major version, ARM64, required virtio devices, guest family | Real backend device realization not yet proven |
+| Broker request policy | Verified | Caller identity, resource caps, managed IDs, generation replay, double-start rejection | Real Binder/platform identity and SELinux integration |
+| AVF launch planning | Verified | Tests cover exact argv, control-character handling, missing AVF tool, runtime path validation | Actual CarbonHV service spawning and owning a VM on device |
+| Android manager domain/state | Verified | JVM unit tests | Connect live broker/session data |
+| Compose library/catalog/create/settings/recovery UI | Verified build | App JVM tests + debug APK build | Real bundle install/runtime flows and accessibility qualification |
+| Immersive `SurfaceView` session shell | Verified build | Geometry/input/reconnect policy unit tests + APK build | Real scanout/guest input, physical gesture/IME/accessibility tests |
+| Update transaction model | Verified | Interruption, health/commit, rollback and migration-epoch tests | Real signed guest updates and storage fault injection |
+| Backup/restore/clone metadata | Verified | Manifest integrity and identity semantics tests | Real stopped-disk backup/restore on physical guest data |
+| Qualification fixtures | Verified | `qualification/test-dry-run.sh` | Fixtures are policy tests, not phone certification |
+
+## 2. Physical host observation
+
+One attached development host was re-probed on 2026-09-27:
+
+| Property | Observed value |
+| --- | --- |
+| Device | Google Pixel 7a (`lynx`) |
+| CPU ABI | `arm64-v8a` |
+| Android release | 17 |
+| SDK | 37 |
+| Build fingerprint | `google/lynx/lynx:17/CP3A.260905.009/16091614:user/release-keys` |
+| `/apex/com.android.virt/bin/vm` | Present/executable |
+| `/dev/kvm` | Present |
+| CPU qualification result | `hardware-virtualized` |
+| Graphics | `unverified` |
+| Overall probe result | `EXPERIMENTAL` |
+
+The ADB qualifier deliberately exits with its experimental status after these static checks. This host is a viable bring-up candidate; it is **not** a supported CarbonHV host tuple yet.
+
+The probe does not establish that CarbonHV's final service identity can launch arbitrary full-system guests, that all CVD1 devices are available through the chosen AVF interface, or that guest graphics can be accelerated/presented into the app.
+
+## 3. Starter guest status
+
+| Guest | Source/contract | Build | Boot | Mobile shell | GPU/input | Security/confinement | Update/recovery | Current label |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| CarbonHV GrapheneOS-derived ARM64 | CVD1 contract verified; Linux source recipe present | Recipe only | Unverified | Unverified | Unverified | Unverified on VM target | Transaction model only | Development recipe |
+| Ubuntu Touch / Lomiri ARM64 | CVD1 contract verified; rootfs+kernel assembler recipe present | Recipe only | Unverified | Unverified | Unverified | AppArmor/mobile-service behavior unverified | Transaction model only | Development recipe |
+
+The GrapheneOS-derived row must not be interpreted as official GrapheneOS device support. The Ubuntu Touch row means the intended guest is the genuine mobile session, not generic Ubuntu desktop.
+
+## 4. CarbonHV v1 release-definition coverage
+
+The architecture defines v1 only when all mandatory statements below are true.
+
+| v1 criterion from architecture | Coverage | Evidence / gap |
+| --- | --- | --- |
+| At least one host tuple has local ARM64 hardware execution and qualified guest GPU acceleration | Partial | Pixel 7a exposes AVF `vm` + `/dev/kvm`; no CarbonHV guest boot or qualified GPU path yet |
+| Both starter bundles are available with truthful provenance/maintenance | Partial | Manifests/contracts/recipes exist; real pinned release images and maintenance baselines do not |
+| Native UI can create/start/use/leave/stop/update/backup/restore/delete | Partial | Native flows/reducers and transaction models exist; no live broker/guest end-to-end path |
+| Shells/apps/touch/keyboard/audio/rotation/networking match published matrix | Unverified | Requires both real guest ports on physical hardware |
+| Immersion has reliable host-owned escape and coherent gestures | Partial | Host escape/input policy exists; physical UX qualification not performed |
+| VMs survive activity/surface loss and tested crash/recovery | Partial | Reconnect/state/storage invariants are tested; live VM/process/surface recovery is unverified |
+| Guest data isolated; sharing explicit; no generic privileged shell | Partial | Storage IDs/leases and narrow broker design exist; production SELinux/IPC and sharing bridges are not integrated |
+| Signing/migration/rollback/recovery exercised | Partial | Migration/rollback transaction tests exist; production signing and real-image recovery are missing |
+| Sustained performance targets pass per guest | Unverified | No real guest performance/thermal data |
+| Unsupported configurations are blocked/experimental; no silent CPU emulation | Verified in policy | Admission/manifest rules fail closed; real product wiring must preserve these rules |
+
+Because the mandatory GPU, real-guest, end-to-end, and sustained-performance criteria remain open, the repository must not be labeled a supported v1 release.
+
+## 5. Architecture section coverage
+
+This is the Task 12 requirements pass against `docs/ARCHITECTURE.md`.
+
+| Architecture area | Current implementation | Status / remaining work |
+| --- | --- | --- |
+| §2 evidence boundaries | Qualification harness separates fixture/static host facts from GPU/guest evidence | Verified discipline; full evidence still pending |
+| §4 host tiers/distribution | H0/H1-style capability result and host integration templates | Partial; no H2 signed integrated host build |
+| §5–6 decomposition/module boundaries | Rust core/protocol/broker/CLI + Kotlin domain/app + guest/host/qualification trees | Verified source structure |
+| §7 admission | Explicit host/bundle/resource capability intersection; unknown required capabilities fail closed | Verified policy; real backend authorization probe remains |
+| §8 CVD contract | CVD major 1, ARM64, virtio GPU/input/net/blk/snd + vsock contracts | Verified contracts; real AVF realization pending |
+| §9 lifecycle/persistence | State, generations, disk leases, idempotent operations | Verified model; platform service/runtime wiring pending |
+| §10 native host experience | Compose library/catalog/create/settings/recovery surfaces | Partial; live runtime, shortcuts, real install/download flows pending |
+| §11 immersion | SurfaceView, host escape affordance, geometry generations, input ownership policy | Partial; physical gesture modes, external display/fold/IME pending |
+| §12 graphics/display | Architecture contract only plus session surface | Unverified; renderer, virtio-gpu, buffers/fences, backpressure and fault recovery are major gates |
+| §13 input/accessibility | Coordinate transforms and input policy tests | Partial; keyboard/IME/stylus/screen-reader/large-font physical acceptance pending |
+| §14 audio/camera/sensors/haptics | No end-to-end bridges qualified | Unverified / optional subset for v1 except audio output is mandatory |
+| §15 host/guest protocol | CVD1 vsock protocol document and bounded handshake/message contract | Partial; production agent implementations and adversarial runtime tests pending |
+| §16 bundles/catalog | Strict manifests and starter metadata | Partial; signed catalog/download/install pipeline pending |
+| §17 GrapheneOS-derived guest | Honest downstream identity, CVD1 contract, Linux build recipe | Recipe only; full ARM64 port/security matrix/boot/update pending |
+| §18 Ubuntu Touch guest | Lomiri-specific contract, direct virtio recipe, verified rootfs input requirement | Recipe only; mobile-session boot/confinement/update pending |
+| §19 storage | Disk ownership/install transaction models | Partial; real allocation/encryption/quota/deletion behavior pending |
+| §20 update/rollback/backup/clone | Two-phase candidate model, data epochs, backup manifest, clone identity semantics | Verified model; signed artifacts and real disk fault injection pending |
+| §21 networking | Architecture only | Unverified on real runtime; VPN/lockdown/IPv6/offline tests pending |
+| §22 sharing/notifications | Protocol families described | Unverified; bridge implementations/grant revocation pending |
+| §23 security | Narrow typed broker and input/path/resource checks | Partial; Binder/SELinux/renderer/release-key controls pending |
+| §24 performance/resources | Resource caps represented; no performance result claimed | Unverified on real guests; 60 Hz/latency/boot/thermal/reliability targets remain gates |
+| §25 failures/diagnostics | Recovery reducers and transaction failure semantics | Partial; structured runtime diagnostics/export and real failure injection pending |
+| §26 validation | Rust/Kotlin/contract/fixture tests plus ADB static probe | Partial; physical host/guest/adversarial/experience matrices pending |
+| §27 build/release | Deterministic source verifier, debug APK, release Rust build path | Partial; CI provenance, SBOM, production signing/promotion pipeline pending |
+| §28 roadmap gates | Gates 0–7 can now be evaluated honestly | Gates 1–3 and 7 remain open; see next section |
+| §31 ADRs | ARM64-only, native Compose+surface, narrow broker, AVF-first, CVD1, one foreground VM reflected in code/contracts | Partial runtime realization but architecture alignment is preserved |
+| §33 v1 release definition | Policy/source pieces exist | Not met overall |
+
+## 6. Roadmap gate status
+
+| Gate | State | What would close it |
+| --- | --- | --- |
+| Gate 0 — authorized host path | Partial | Pin selected Pixel/Android source branch; implement/audit service registration, caller authorization, SELinux, runtime ownership |
+| Gate 1 — actual hardware execution | Open | Boot a minimal ARM64 guest repeatedly through the real CarbonHV backend; verify vCPUs, timers, block, vsock, shutdown, cleanup |
+| Gate 2 — local graphics path | Open | Hardware-rendered guest scene/compositor through selected renderer into Android surface with measured latency/energy and correct buffer/fence ownership |
+| Gate 3 — both starter guest ports | Open | Real GrapheneOS-derived and Ubuntu Touch images boot to genuine mobile shells, persist data, preserve declared confinement, and use qualified display/input |
+| Gate 4 — complete native product flow | Partial | Wire the app to live broker/bundle install/runtime; qualify text input, escape, recreation, return, accessibility |
+| Gate 5 — durable data/updates | Partial | Signed real-image update/backup/restore plus interruption/storage exhaustion/migration recovery tests |
+| Gate 6 — bounded integrations | Open/optional sequencing | Implement only selected bridges and prove per-feature grant/revocation under compromise/process death/lock |
+| Gate 7 — supported release | Open | Both guests pass mandatory experience/security/update/performance matrix on at least one exact host tuple |
+
+## 7. Hardware-only evidence still required
+
+The following cannot be truthfully completed by building the repository on the macOS development machine:
+
+- real Android host service authorization and SELinux enforcement;
+- hardware-backed guest execution through the actual integrated service;
+- AVF/CVD1 virtual-device compatibility beyond static launch planning;
+- guest GPU acceleration, renderer selection, buffer sharing, fences, scanout, and surface presentation;
+- touch-to-visible latency and geometry/input behavior against real rendered frames;
+- real audio output and optional capture paths;
+- network/VPN/IPv6/offline behavior through the privileged runtime;
+- activity recreation, surface loss, host process death, screen lock, and host OTA recovery with a live VM;
+- low-memory and storage-exhaustion behavior;
+- 20-boot cold-boot measurements, 100 start/stop cycles, 30-minute audio and thermal workloads, and frame-latency targets;
+- full GrapheneOS-derived setup/lock/reboot/confinement/security-feature matrix;
+- full Ubuntu Touch setup/Lomiri gestures/session/AppArmor matrix;
+- real signed guest update, rollback, repair, backup/restore, and migration behavior;
+- physical accessibility/gesture-mode/external-keyboard/fold/external-display acceptance.
+
+Until those gates are closed with recorded device/build/renderer/guest tuples, `EXPERIMENTAL` is the strongest truthful physical-host label.
+
+## 8. Deliberately excluded or later work
+
+These do not block v1 when their absence is communicated accurately:
+
+- protected GUI VMs;
+- durable RAM checkpoints;
+- multiple concurrent foreground VMs;
+- microphone, camera, location and notification mirroring;
+- host IME bridging beyond the mandatory usable keyboard/text-input experience;
+- additional host/GPU families and additional guest operating systems.
+
+They should not be enabled by weakening the core native-execution, isolation, or qualification requirements.
