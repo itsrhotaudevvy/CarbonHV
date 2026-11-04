@@ -100,6 +100,13 @@ What this means:
 - **Snapdragon path, source-complete and hardware-gated (ADR-013):**
   - *Tier 1, AVF on Gunyah.* A controlled host build declares `androidboot.hypervisor.vm.supported=1` and grants the AVF crosvm domain the vendor `/dev/gunyah` label. The probe now records that label as `vendor_hypervisor_selinux_label`. crosvm then falls back from the absent `/dev/kvm` to `/dev/gunyah`, and CarbonHV's existing AVF display, gfxstream, and input path is reused unchanged. The broker classifies this as `VendorHypervisorAvfReady`; the probe classifies it as `avf_vendor_path=declared`. Both still mean `EXPERIMENTAL`.
   - *Tier 2, CarbonHV-owned crosvm.* `DirectCrosvmBackend` builds an exact `crosvm run --hypervisor gunyah[device=/dev/gunyah]` argv. It pins 4 vCPUs to the A78 cores 4–7, mirrors capacity and the frequency domain, and forwards guest DVFS. It never requests a protected or trusted VM and never uses swiotlb. Spawning and supervising that process from `carbonhvd` is not yet implemented.
+- **Re-probed 2026-11-04** (`qualification/gpu/reports/redmi-kunzite-sm6475-host-probe-2026-11-04.txt`):
+  - **CPU:** MIDR parts `0xd05`×4 (A55) + `0xd41`×4 (A78) in cpufreq domains `0-3;4-7`. This confirms the broker would pin 4 vCPUs to CPUs 4–7.
+  - **Gunyah device:** `/dev/gunyah` is labeled `vendor_gunyah_dev`, and SELinux denies the shell.
+  - **Kernel:** `CONFIG_GUNYAH=y` with resource-manager modules loaded. `CONFIG_KVM=y`, but there is no `/dev/kvm`.
+  - **THP:** runtime mode is `never`, so the plan now drops huge-page advice on such hosts.
+  - **Device state:** bootloader unlocked, no root, SELinux enforcing.
+  - The complete controlled-build delta is in `host/product/snapdragon/`: one bootconfig line, one `vm_manager_device_type` attribute line, and THP set to `madvise`.
 - The pinned crosvm's Gunyah backend exposes no SVE, MTE, or PMU to guests. This is a recorded guest difference, not a qualification failure.
 - Adreno support is a host provider/profile: the guest ABI stays CVD1 `virtio-gpu`. The `gfxstream-vulkan-adreno` profile shares the Mali profile's transport, buffer, sync and sandbox contract and carries no Adreno quirks. Gfxstream vs Mesa/Venus is still to be chosen from measurements, which cannot start without a bootable guest.
 - Chip-aware limits are implemented and unit-tested: the broker caps guest vCPUs at the number of performance cores (4 here) and leaves the Android host at least 3 GiB, so this phone grants at most 4319 MiB. That admits Ubuntu Touch (3072 MiB) and only just the GrapheneOS-derived bundle (4096 MiB). Low `MemAvailable` on this firmware is an admission-time risk.

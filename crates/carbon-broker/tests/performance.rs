@@ -128,3 +128,41 @@ fn oversubscribing_performance_cores_is_refused() {
         })
     );
 }
+
+#[test]
+fn thp_mode_is_parsed_from_the_bracketed_sysfs_value() {
+    use carbon_broker::ThpMode;
+    assert_eq!(ThpMode::parse("always [madvise] never\n"), ThpMode::Madvise);
+    // Observed on the stock Redmi kunzite (Snapdragon 6 Gen 3), 2026-11-04.
+    assert_eq!(ThpMode::parse("always madvise [never]\n"), ThpMode::Never);
+    assert_eq!(ThpMode::parse("[always] madvise never"), ThpMode::Always);
+    assert_eq!(ThpMode::parse(""), ThpMode::Unknown);
+    assert_eq!(
+        ThpMode::read(std::path::Path::new("/nonexistent/thp")),
+        ThpMode::Unknown
+    );
+}
+
+#[test]
+fn huge_page_advice_is_dropped_when_the_host_runs_thp_never() {
+    use carbon_broker::ThpMode;
+    let plan = GuestPerformancePlan::build(
+        PerformanceProfile::NearNative,
+        Some(&sm6475()),
+        4,
+        CpuControl::PerVcpuAffinity,
+    )
+    .unwrap();
+    assert!(plan.clone().for_host_thp(ThpMode::Madvise).hugepages);
+    assert!(plan.clone().for_host_thp(ThpMode::Unknown).hugepages);
+    let never = plan.for_host_thp(ThpMode::Never);
+    assert!(!never.hugepages);
+    assert!(!never.crosvm_args().iter().any(|arg| arg == "--hugepages"));
+    // Every other lever stays.
+    assert!(
+        never
+            .crosvm_args()
+            .iter()
+            .any(|arg| arg == "--virt-cpufreq-upstream")
+    );
+}

@@ -7,6 +7,15 @@ qualification claim**. See [`docs/SUPPORT_MATRIX.md`](docs/SUPPORT_MATRIX.md).
 
 ## [Unreleased]
 
+### Added
+
+- Snapdragon controlled-host fragment (`host/product/snapdragon/`). It declares AVF VM support in the boot config, adds the one-line `vm_manager_device_type` vendor policy for the observed `vendor_gunyah_dev` label, and sets THP to `madvise`. A contract test checks it against the physical probe evidence.
+- Physical re-probe of the Redmi `kunzite` (Snapdragon 6 Gen 3) on 2026-11-04.
+
+### Changed
+
+- The performance plan drops huge-page advice on hosts whose runtime THP mode is `never` (`ThpMode`), as observed on stock Snapdragon firmware.
+
 ## [0.1.0-alpha.1] - 2026-11-04
 
 First public development milestone. The source, contracts and tooling are verified in CI. **No guest has booted on a physical phone through CarbonHV yet**; every physical host stays `EXPERIMENTAL` or `UNSUPPORTED`.

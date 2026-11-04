@@ -58,6 +58,8 @@ bash -n host/test-product-integration-contract.sh
 bash -n host/test-android-soong-contract.sh
 bash -n host/product/prepare-controlled-host.sh
 bash -n host/product/test-prepare-controlled-host.sh
+bash -n host/product/snapdragon/test-snapdragon-contract.sh
+host/product/snapdragon/test-snapdragon-contract.sh
 host/android/test-framework-raw-config-contract.sh
 host/android/test-broker-aidl-contract.sh
 host/android/test-host-broker-forwarding-contract.sh
