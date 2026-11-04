@@ -15,7 +15,7 @@ What is still unknown: whether Qualcomm's Gunyah resource manager accepts a **no
 
 - The bootloader is unlocked (verified boot state `orange`), as already observed.
 - Back up your data. Flashing `vbmeta` with verification disabled can make some devices demand a factory reset on the next boot.
-- Use the **exact** stock fastboot ROM for the running build: `kunzite_global`, build `OS3.0.304.0.WPQCNXM`, fingerprint `Redmi/kunzite/kunzite:16/BP2A.250605.031.A3/OS3.0.304.0.WPQCNXM:user/release-keys`. Images from any other build can soft-brick the phone. Download only from Xiaomi, and check the archive's published MD5 or SHA.
+- Use the **exact** fastboot package of the running build. The probed phone runs **xiaomi.eu** `OS3.0.304.0.WPQCNXM` (fingerprint `Redmi/kunzite/kunzite:16/BP2A.250605.031.A3/OS3.0.304.0.WPQCNXM:user/release-keys`), so its matching package is `xiaomi.eu_KUNZITE_OS3.0.304.0.WPQCNXM_16`. Images from any other build, for example the EEA `OS3.0.302.0.WPQEUXM`, can soft-brick the phone, because `vendor_boot` carries the vendor ramdisk and modules for the running kernel.
 - Rollback is always possible while the bootloader stays unlocked (step 6).
 
 ## 1. Patch `vendor_boot`
@@ -31,6 +31,12 @@ The patcher:
 - keeps the image size and every other byte, including the AVB footer;
 - reports how many bytes changed, which for v4 is only the bootconfig text and its size field.
 
+Dry run on 2026-11-04 against `xiaomi.eu_KUNZITE_OS3.0.304.0.WPQCNXM_16`:
+
+- **Input:** `images/vendor_boot.img`, SHA-256 `6f0ed25e…ec77`, a v4 header with page size 4096.
+- **Stock bootconfig:** `androidboot.hardware=qcom`, `memcg=1`, `usbcontroller=a600000.dwc3`, `load_modules_parallel=true`, `vendor.qspa=true`. No hypervisor setting.
+- **Output:** SHA-256 `26a9f18c…0e33`. 39 bytes differ, the size is unchanged at 100663296, and the AVB footer is kept.
+
 ## 2. Flash
 
 Both `vbmeta.img` and `vendor_boot.carbonhv.img` must come from the same stock ROM.
@@ -38,7 +44,7 @@ Both `vbmeta.img` and `vendor_boot.carbonhv.img` must come from the same stock R
 ```bash
 adb reboot bootloader
 fastboot getvar current-slot                       # observed: a
-fastboot --disable-verity --disable-verification flash vbmeta images/vbmeta.img
+fastboot --disable-verity --disable-verification flash vbmeta images/vbmeta.img   # stock reports veritymode=enforcing
 fastboot flash vendor_boot_a vendor_boot.carbonhv.img   # use the current slot
 fastboot reboot
 ```
