@@ -59,6 +59,7 @@ bash -n host/test-android-soong-contract.sh
 bash -n host/product/prepare-controlled-host.sh
 bash -n host/product/test-prepare-controlled-host.sh
 bash -n host/product/snapdragon/test-snapdragon-contract.sh
+python3 -I host/product/snapdragon/test_patch_vendor_boot.py
 host/product/snapdragon/test-snapdragon-contract.sh
 host/android/test-framework-raw-config-contract.sh
 host/android/test-broker-aidl-contract.sh
