@@ -36,7 +36,7 @@ jobs:
           mkdir -p dist
           tar -C target/release -czf "dist/carbonctl-${GITHUB_REF_NAME}-x86_64-linux.tar.gz" carbonctl
           cp android/app/build/outputs/apk/debug/app-debug.apk "dist/carbonhv-${GITHUB_REF_NAME}-debug.apk"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-linux
           path: dist/*
@@ -53,7 +53,7 @@ jobs:
           cargo build --release -p carbon-cli
           mkdir -p dist
           tar -C target/release -czf "dist/carbonctl-${GITHUB_REF_NAME}-aarch64-macos.tar.gz" carbonctl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dist-macos
           path: dist/*
