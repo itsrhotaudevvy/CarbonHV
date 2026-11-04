@@ -44,9 +44,13 @@ First public development milestone. The source, contracts and tooling are verifi
   - AVF-readiness classification from `ro.boot.hypervisor.*`;
   - `DirectCrosvmBackend` launch plans with an explicit `--hypervisor` and fd-only inputs, never a protected VM.
 - **GPU:** gfxstream renderer profiles for Mali, Immortalis, Adreno, PowerVR and Samsung Xclipse on one shared CVD1 transport contract.
-- **Guests:**
+- **Starter guests:**
   - GrapheneOS-derived (Android 17 line) and Ubuntu Touch (24.04 series) build recipes;
   - `carbonctl guest kernel-config` with shared and per-family fragments, which the Ubuntu Touch assembly requires.
+- **Custom ROM ports (unofficial, recipe only):**
+  - LineageOS (`lineage-24.0`, Android 17; `lineage-23.2` selectable) and PixelOS (`seventeen`, Android 17; `sixteen-qpr2` selectable);
+  - one shared CVD1 product overlay on the AOSP cuttlefish arm64-only phone (ADR-016), with direct-boot kernel, initrd and super artifacts;
+  - bundles, broker starter profiles and app catalog entries.
 - **Android app:** Compose library, catalog, create, settings and recovery flows, plus an immersive `SurfaceView` session with host-owned escape, geometry generations, input mapping and reconnect policy.
 - **Qualification:**
   - a read-only ADB host probe covering hypervisor, AVF properties, vendor device label, core types, frequency domains, THP, GPU and renderer profile;
@@ -64,6 +68,7 @@ First public development milestone. The source, contracts and tooling are verifi
 
 - The controlled host build, guest boots, gfxstream presentation, sustained qualification and signed bundles are all still hardware or integration gated.
 - `carbonhvd` does not yet spawn or supervise the direct crosvm tier.
+- Per-bundle Android boot parameters (`androidboot.*`) are recorded by the ROM builds but not yet passed through the broker.
 - No backend enables MTE in guests yet: an MTE guest cannot map the non-MTE gfxstream blobs used for zero-copy presentation. Gunyah, GenieZone and Halla guests also lack SVE and PMU.
 
 [Unreleased]: https://github.com/itsrhotaudevvy/CarbonHV/compare/v0.1.0-alpha.1...HEAD

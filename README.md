@@ -11,6 +11,13 @@ The first two guests are:
 - a **CarbonHV-maintained GrapheneOS-derived** ARM64 virtual-device build (Android 17 line). It is not an official GrapheneOS target or release;
 - **Ubuntu Touch with Lomiri** (24.04 series), adapted as a real mobile Linux guest rather than a generic desktop.
 
+Additional Android-derived ROMs are being ported on the same CVD1 overlay ([ADR-016](docs/ARCHITECTURE.md)):
+
+- **LineageOS**, unofficial: `lineage-24.0` (Android 17) by default, or `lineage-23.2` (Android 16);
+- **PixelOS**, unofficial: `seventeen` (Android 17) by default, or `sixteen-qpr2` (PixelOS 16.2).
+
+Both are recipe-only today ([`guest/lineageos`](guest/lineageos), [`guest/pixelos`](guest/pixelos)).
+
 > [!IMPORTANT]
 > **Pre-release.** CarbonHV is a development milestone, not a supported release. The source, contracts and tooling are verified in CI. **No guest has yet booted on a physical phone through CarbonHV**, and every physical host is `EXPERIMENTAL` or `UNSUPPORTED`. See the [support matrix](docs/SUPPORT_MATRIX.md) for exactly what is proven and what is still hardware-gated. CarbonHV never falls back to software CPU emulation.
 
@@ -144,7 +151,8 @@ It exits 3 for a CVD1 contract gap and 5 for a near-native performance gap. The 
 | `android/host-contract` | JVM tests for the platform host-integration logic |
 | `host` | Platform host integration, AIDL, SELinux, Soong and product fragment |
 | `bundles` | Starter bundle manifests and schema notes |
-| `guest/android`, `guest/ubuntu-touch`, `guest/common` | Guest recipes, CVD1 contracts, kernel fragments |
+| `guest/android`, `guest/ubuntu-touch`, `guest/common` | Starter guest recipes, CVD1 contracts, kernel fragments |
+| `guest/aosp-overlay`, `guest/lineageos`, `guest/pixelos` | Shared CVD1 product overlay and recipes for AOSP-derived custom ROMs |
 | `qualification` | Physical-host probe, GPU qualification policy, fixtures and evidence reports |
 | `docs` | Architecture, building, security, support matrix, plans |
 

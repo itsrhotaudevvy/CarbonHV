@@ -21,6 +21,17 @@ pub fn resolve_starter_bundle_request(
             "grapheneos-initrd.img",
             "grapheneos-system.img",
         ),
+        // AOSP-derived ROM ports boot a dynamic-partition super image read-only.
+        "lineageos" => (
+            "lineageos-kernel.img",
+            "lineageos-initrd.img",
+            "lineageos-super.img",
+        ),
+        "pixelos" => (
+            "pixelos-kernel.img",
+            "pixelos-initrd.img",
+            "pixelos-super.img",
+        ),
         "ubuntu-touch" => (
             "ubuntu-touch-kernel.img",
             "ubuntu-touch-initrd.img",

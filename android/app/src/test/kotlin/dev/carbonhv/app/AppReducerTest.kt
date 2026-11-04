@@ -11,7 +11,10 @@ class AppReducerTest {
     fun initial_catalog_contains_both_starter_bundles() {
         val state = AppState.initial()
 
-        assertEquals(listOf("grapheneos", "ubuntu-touch"), state.catalog.map { it.id })
+        assertEquals(
+            listOf("grapheneos", "lineageos", "pixelos", "ubuntu-touch"),
+            state.catalog.map { it.id },
+        )
         assertEquals(AppScreen.Library, state.screen)
     }
 
@@ -82,5 +85,15 @@ class AppReducerTest {
 
         assertEquals(AppScreen.Recovery, state.screen)
         assertEquals(FailureKind.HostUpdateIncompatible, state.recoveryFailure)
+    }
+
+    @Test
+    fun custom_rom_ports_are_labelled_unofficial() {
+        val catalog = AppState.initial().catalog
+        for (id in listOf("lineageos", "pixelos")) {
+            val bundle = catalog.single { it.id == id }
+            assertTrue("${bundle.name} must be marked unofficial", bundle.name.endsWith("(unofficial)"))
+            assertEquals("Balanced", bundle.integrationProfile)
+        }
     }
 }
