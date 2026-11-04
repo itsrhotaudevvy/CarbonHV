@@ -216,7 +216,7 @@ private fun SettingsScreen(padding: PaddingValues) {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Privacy", style = MaterialTheme.typography.titleMedium)
-                Text("GrapheneOS-derived instances default to Private sharing. Ubuntu Touch defaults to Balanced sharing.")
+                Text("GrapheneOS-derived instances default to Private sharing. LineageOS, PixelOS and Ubuntu Touch default to Balanced sharing.")
             }
         }
     }

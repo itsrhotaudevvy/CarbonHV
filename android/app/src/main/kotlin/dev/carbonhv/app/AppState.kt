@@ -57,6 +57,20 @@ data class AppState(
                     recommendedMemoryMiB = 4096,
                 ),
                 CatalogBundle(
+                    id = "lineageos",
+                    name = "LineageOS (unofficial)",
+                    description = "CarbonHV virtual-device build of LineageOS for Android 17",
+                    integrationProfile = "Balanced",
+                    recommendedMemoryMiB = 4096,
+                ),
+                CatalogBundle(
+                    id = "pixelos",
+                    name = "PixelOS (unofficial)",
+                    description = "CarbonHV virtual-device build of PixelOS for Android 17",
+                    integrationProfile = "Balanced",
+                    recommendedMemoryMiB = 4096,
+                ),
+                CatalogBundle(
                     id = "ubuntu-touch",
                     name = "Ubuntu Touch",
                     description = "Lomiri mobile Linux virtual-device port",

@@ -132,7 +132,10 @@ Implications that hold across families:
 | CarbonHV GrapheneOS-derived ARM64 | CVD1 contract verified; Linux source recipe present; virtual gralloc/HWC/EGL/Vulkan requirements locked | Recipe only | Unverified | Unverified | Contract requires virtual GLES/Vulkan + native-buffer/explicit-sync; runtime unverified | Unverified on VM target | Transaction model only | Development recipe |
 | Ubuntu Touch / Lomiri ARM64 | CVD1 contract verified; rootfs+kernel assembler recipe present; Mesa/Mir virtio-gpu requirements locked | Recipe only | Unverified | Unverified | Contract requires GLES + native-buffer/explicit-sync; Vulkan tested if exposed; runtime unverified | AppArmor/mobile-service behavior unverified | Transaction model only | Development recipe |
 
-The GrapheneOS-derived row must not be interpreted as official GrapheneOS device support. The Ubuntu Touch row means the intended guest is the genuine mobile session, not generic Ubuntu desktop.
+| LineageOS ARM64 (unofficial) | CVD1 contract verified. The shared AOSP-derived overlay (`lineage_carbonhv_cvd1`) sits on the cuttlefish arm64-only phone; the recipe defaults to `lineage-24.0` (Android 17, `cp2a`), with `lineage-23.2` selectable | Recipe only | Unverified | Unverified | gfxstream guest GLES/Vulkan via the cuttlefish base (Lineage's Mesa/virgl virtio target deliberately not used); runtime unverified | Unverified; bundle boot parameters not yet carried by the broker | Transaction model only | Additional development recipe |
+| PixelOS ARM64 (unofficial) | CVD1 contract verified. Same overlay (`aosp_carbonhv_cvd1`); the recipe defaults to `seventeen` (`android-17.0.0_r1` + `lineage-24.0`), with `sixteen-qpr2` (PixelOS 16.2) selectable | Recipe only | Unverified | Unverified | Same as LineageOS | Same as LineageOS; no Pixel-exclusive or Google-certified features | Transaction model only | Additional development recipe |
+
+The GrapheneOS-derived row must not be interpreted as official GrapheneOS device support. Likewise, the LineageOS and PixelOS rows are unofficial CarbonHV builds, not official LineageOS or PixelOS devices or releases. The Ubuntu Touch row means the intended guest is the genuine mobile session, not generic Ubuntu desktop.
 
 ## 4. CarbonHV v1 release-definition coverage
 
@@ -230,6 +233,6 @@ These do not block v1 when their absence is communicated accurately:
 - multiple concurrent foreground VMs;
 - microphone, camera, location and notification mirroring;
 - host IME bridging beyond the mandatory usable keyboard/text-input experience;
-- additional host/GPU families and additional guest operating systems.
+- additional guest operating systems beyond the starter pair, which do not gate v1. The LineageOS and PixelOS ports are additional recipes built on the same CVD1 overlay (ADR-016).
 
 They should not be enabled by weakening the core native-execution, isolation, or qualification requirements.

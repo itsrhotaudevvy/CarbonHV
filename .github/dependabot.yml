@@ -13,3 +13,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Pinned to the crosvm revision in Cargo.toml [workspace.metadata.carbonhv.renderer-upstream];
+      # bump together with crosvm/gfxstream, never alone.
+      - dependency-name: magma-gpu
+      - dependency-name: rutabaga_gfx

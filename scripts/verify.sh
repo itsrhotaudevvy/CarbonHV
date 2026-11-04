@@ -13,21 +13,33 @@ cargo test
 echo "[3/9] Bundle manifests"
 cargo run -q -p carbon-cli -- bundle verify bundles/grapheneos/bundle.toml
 cargo run -q -p carbon-cli -- bundle verify bundles/ubuntu-touch/bundle.toml
+cargo run -q -p carbon-cli -- bundle verify bundles/lineageos/bundle.toml
+cargo run -q -p carbon-cli -- bundle verify bundles/pixelos/bundle.toml
 
 echo "[4/9] Guest contracts"
 cargo run -q -p carbon-cli -- guest verify guest/android/device/cvd1.toml
 cargo run -q -p carbon-cli -- guest verify guest/ubuntu-touch/device/cvd1.toml
+cargo run -q -p carbon-cli -- guest verify guest/lineageos/device/cvd1.toml
+cargo run -q -p carbon-cli -- guest verify guest/pixelos/device/cvd1.toml
 kernel_base="$(mktemp)"
 trap 'rm -f "$kernel_base"' EXIT
 printf 'CONFIG_ARM64=y\n' > "$kernel_base"
 cargo run -q -p carbon-cli -- guest kernel-config android "$kernel_base" \
   guest/common/kernel/cvd1-near-native.fragment guest/android/device/kernel.fragment
+for rom in lineageos pixelos; do
+  cargo run -q -p carbon-cli -- guest kernel-config android "$kernel_base" \
+    guest/common/kernel/cvd1-near-native.fragment "guest/$rom/device/kernel.fragment"
+done
 cargo run -q -p carbon-cli -- guest kernel-config ubuntu-touch "$kernel_base" \
   guest/common/kernel/cvd1-near-native.fragment guest/ubuntu-touch/device/kernel.fragment
 
 echo "[5/9] Shell contracts"
 bash -n guest/android/build.sh
 bash -n guest/ubuntu-touch/build.sh
+bash -n guest/aosp-overlay/build-cvd1.sh
+bash -n guest/lineageos/build.sh
+bash -n guest/pixelos/build.sh
+guest/test-aosp-overlay-contract.sh
 bash -n qualification/carbon-qualify.sh
 bash -n qualification/test-dry-run.sh
 bash -n qualification/test-adb-probe.sh

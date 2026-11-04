@@ -50,3 +50,39 @@ fn unsupported_bundle_id_is_rejected_instead_of_becoming_an_object_name() {
 
     assert_eq!(error, StarterBundleError::UnsupportedBundle);
 }
+
+#[test]
+fn custom_rom_ports_boot_their_own_read_only_super_image() {
+    for (bundle, prefix) in [("lineageos", "lineageos"), ("pixelos", "pixelos")] {
+        let request =
+            resolve_starter_bundle_request(bundle, "rom-a", Generation(1), 1004, 4096, 4).unwrap();
+        assert_eq!(request.kernel.as_str(), format!("{prefix}-kernel.img"));
+        assert_eq!(request.initrd.as_str(), format!("{prefix}-initrd.img"));
+        assert_eq!(
+            request.disks[0].object_id.as_str(),
+            format!("{prefix}-super.img")
+        );
+        assert!(!request.disks[0].writable);
+        assert_eq!(request.disks[1].object_id.as_str(), "rom-a-data.img");
+        assert!(request.disks[1].writable);
+    }
+}
+
+#[test]
+fn every_shipped_bundle_manifest_has_a_broker_starter_profile() {
+    let bundles = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../bundles");
+    let mut ids = Vec::new();
+    for entry in std::fs::read_dir(bundles).unwrap() {
+        let manifest = entry.unwrap().path().join("bundle.toml");
+        if let Ok(text) = std::fs::read_to_string(&manifest) {
+            let id = carbon_core::BundleManifest::parse(&text).unwrap().id;
+            assert!(
+                resolve_starter_bundle_request(&id, "vm-a", Generation(0), 1, 2048, 2).is_ok(),
+                "{id} has a manifest but no broker starter profile"
+            );
+            ids.push(id);
+        }
+    }
+    ids.sort();
+    assert_eq!(ids, ["grapheneos", "lineageos", "pixelos", "ubuntu-touch"]);
+}

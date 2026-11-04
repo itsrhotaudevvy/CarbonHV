@@ -1,0 +1,17 @@
+# Development source manifest. Release CI replaces artifact hashes with built outputs.
+id = "lineageos"
+display_name = "LineageOS (unofficial CarbonHV virtual-device build)"
+version = "24.0-2026.11.04-dev"
+publisher = "CarbonHV"
+release_status = "development"
+guest_arch = "arm64"
+cvd_major = 1
+memory_mib = 4096
+storage_mib = 24576
+requires_hardware_virtualization = true
+requires_gpu_acceleration = true
+backend = "avf"
+integration_profile = "balanced"
+artifact = "kernel|out/carbonhv/lineageos/kernel|0000000000000000000000000000000000000000000000000000000000000000"
+artifact = "initrd|out/carbonhv/lineageos/initrd.img|0000000000000000000000000000000000000000000000000000000000000000"
+artifact = "super|out/carbonhv/lineageos/super.img|0000000000000000000000000000000000000000000000000000000000000000"
