@@ -82,3 +82,34 @@ pub fn gfxstream_vulkan_adreno_backend() -> RendererBackendProfile {
         ..gfxstream_vulkan_mali_backend()
     }
 }
+
+fn gfxstream_backend_for(profile: GpuRendererProfile) -> RendererBackendProfile {
+    RendererBackendProfile {
+        profile,
+        integration: RendererIntegrationPoint {
+            owner: AVF_CROSVM_OWNER,
+            backend: GFXSTREAM_MALI_ENTRY_POINT,
+        },
+        ..gfxstream_vulkan_mali_backend()
+    }
+}
+
+pub fn gfxstream_vulkan_immortalis_backend() -> RendererBackendProfile {
+    gfxstream_backend_for(GpuRendererProfile::gfxstream_vulkan_immortalis())
+}
+
+pub fn gfxstream_vulkan_powervr_backend() -> RendererBackendProfile {
+    gfxstream_backend_for(GpuRendererProfile::gfxstream_vulkan_powervr())
+}
+
+pub fn gfxstream_vulkan_xclipse_backend() -> RendererBackendProfile {
+    gfxstream_backend_for(GpuRendererProfile::gfxstream_vulkan_xclipse())
+}
+
+/// Backend profiles for every built-in host GPU family, in selection order.
+pub fn builtin_backends() -> Vec<RendererBackendProfile> {
+    GpuRendererProfile::builtin_profiles()
+        .into_iter()
+        .map(gfxstream_backend_for)
+        .collect()
+}

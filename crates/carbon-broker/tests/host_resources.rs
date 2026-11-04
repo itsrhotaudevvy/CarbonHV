@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use carbon_broker::{BrokerPolicy, CpuCore, HostResources, PlacementError, VcpuPin, VcpuPlacement};
+use carbon_broker::{
+    BrokerPolicy, CoreKind, CpuCore, HostResources, PlacementError, VcpuPin, VcpuPlacement,
+};
 
 fn policy() -> BrokerPolicy {
     BrokerPolicy {
@@ -20,6 +22,7 @@ fn sm6475() -> HostResources {
             index,
             capacity: if index < 4 { 405 } else { 1024 },
             freq_domain: if index < 4 { 0 } else { 4 },
+            kind: CoreKind::Unknown,
         })
         .collect();
     HostResources {
@@ -69,6 +72,7 @@ fn homogeneous_cores_are_all_performance_cores() {
                 index,
                 capacity: 1024,
                 freq_domain: 0,
+                kind: CoreKind::Unknown,
             })
             .collect(),
     };
@@ -139,22 +143,26 @@ fn reads_capacity_and_cpufreq_domains() {
             CpuCore {
                 index: 0,
                 capacity: 405,
-                freq_domain: 0
+                freq_domain: 0,
+                kind: CoreKind::Unknown,
             },
             CpuCore {
                 index: 1,
                 capacity: 405,
-                freq_domain: 0
+                freq_domain: 0,
+                kind: CoreKind::Unknown,
             },
             CpuCore {
                 index: 2,
                 capacity: 1024,
-                freq_domain: 2
+                freq_domain: 2,
+                kind: CoreKind::Unknown,
             },
             CpuCore {
                 index: 3,
                 capacity: 1024,
-                freq_domain: 2
+                freq_domain: 2,
+                kind: CoreKind::Unknown,
             },
         ]
     );
@@ -259,6 +267,7 @@ fn sm8650_shaped() -> HostResources {
                 index,
                 capacity: *capacity,
                 freq_domain: *freq_domain,
+                kind: CoreKind::Unknown,
             })
             .collect(),
     }
@@ -299,11 +308,13 @@ fn frequency_capacities_are_renormalized_to_the_scheduler_scale() {
                 index: 0,
                 capacity: 2_400_000,
                 freq_domain: 0,
+                kind: CoreKind::Unknown,
             },
             CpuCore {
                 index: 1,
                 capacity: 3_000_000,
                 freq_domain: 1,
+                kind: CoreKind::Unknown,
             },
         ],
     };

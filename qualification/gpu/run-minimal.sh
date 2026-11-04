@@ -150,6 +150,9 @@ elif [[ -n "$serial" && -n "$renderer" && -z "$evidence" && -z "$fixture" && "$d
   case "$renderer" in
     gfxstream-vulkan-mali) renderer_host_prefix="Mali-" ;;
     gfxstream-vulkan-adreno) renderer_host_prefix="Adreno" ;;
+    gfxstream-vulkan-immortalis) renderer_host_prefix="Immortalis-" ;;
+    gfxstream-vulkan-powervr) renderer_host_prefix="PowerVR" ;;
+    gfxstream-vulkan-xclipse) renderer_host_prefix="Samsung Xclipse" ;;
     *)
       echo "unsupported physical renderer profile: $renderer" >&2
       exit 65

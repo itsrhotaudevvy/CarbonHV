@@ -50,6 +50,47 @@ impl GpuRendererProfile {
         }
     }
 
+    /// Arm Immortalis (MediaTek Dimensity 9200+). Same Arm driver family as Mali; some drivers
+    /// report `Mali-G720-Immortalis`, which the Mali profile already matches.
+    pub fn gfxstream_vulkan_immortalis() -> Self {
+        Self {
+            id: "gfxstream-vulkan-immortalis".into(),
+            host_renderer_prefix: Some("Immortalis-".into()),
+            ..Self::gfxstream_vulkan_mali()
+        }
+    }
+
+    /// Imagination PowerVR (Google Tensor G5 `DXT-48-1536`, some MediaTek Helio/Dimensity).
+    pub fn gfxstream_vulkan_powervr() -> Self {
+        Self {
+            id: "gfxstream-vulkan-powervr".into(),
+            host_renderer_prefix: Some("PowerVR".into()),
+            ..Self::gfxstream_vulkan_mali()
+        }
+    }
+
+    /// Samsung Xclipse (AMD RDNA-derived, Exynos 2200 and later). Older Exynos parts use Mali.
+    pub fn gfxstream_vulkan_xclipse() -> Self {
+        Self {
+            id: "gfxstream-vulkan-xclipse".into(),
+            host_renderer_prefix: Some("Samsung Xclipse".into()),
+            ..Self::gfxstream_vulkan_mali()
+        }
+    }
+
+    /// Every built-in host GPU profile, in selection order. All share one gfxstream/Vulkan
+    /// transport, buffer, sync and sandbox contract; the guest always sees CVD1 `virtio-gpu`.
+    /// No vendor quirk is carried without physical evidence.
+    pub fn builtin_profiles() -> Vec<Self> {
+        vec![
+            Self::gfxstream_vulkan_mali(),
+            Self::gfxstream_vulkan_immortalis(),
+            Self::gfxstream_vulkan_adreno(),
+            Self::gfxstream_vulkan_powervr(),
+            Self::gfxstream_vulkan_xclipse(),
+        ]
+    }
+
     fn host_matches(&self, host: &GpuHostCapabilities) -> bool {
         self.host_renderer_prefix
             .as_ref()

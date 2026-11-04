@@ -62,6 +62,8 @@ pub fn run_android_broker_service() -> Result<(), String> {
         PathBuf::from("/apex/com.android.virt/bin/vm"),
         PathBuf::from("/dev/kvm"),
     )
+    .with_vendor_hypervisor_device(HypervisorKind::GenieZone, PathBuf::from("/dev/gzvm"))
+    .with_vendor_hypervisor_device(HypervisorKind::Halla, PathBuf::from("/dev/halla"))
     .with_gunyah_device(PathBuf::from(GUNYAH_DEVICE));
     let probe = backend.probe_with_properties(&hypervisor_properties());
     // Recorded for diagnostics; AVF itself still refuses VMs on a host that is not ready.

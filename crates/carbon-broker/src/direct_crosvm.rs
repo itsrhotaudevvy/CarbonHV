@@ -1,34 +1,40 @@
-//! Direct crosvm launch planning for Qualcomm Gunyah hosts.
+//! Direct crosvm launch planning for every aarch64 hypervisor crosvm supports on phones.
 //!
-//! On a Snapdragon phone the hypervisor is Gunyah, not KVM. The AOSP `com.android.virt` APEX
-//! ships a crosvm built with the `gunyah` feature (virtmgr uses it for QCOM trusted VMs), and
-//! crosvm creates *unprotected* Gunyah VMs with shared (not lent) guest memory and no swiotlb
-//! bounce buffers, so virtio and gfxstream blob memory stay zero-copy.
+//! AVF's raw config can only ask for a vCPU count. Launching crosvm directly lets CarbonHV pin
+//! each vCPU to one performance core, mirror capacities and frequency domains, and forward guest
+//! DVFS, on any of:
 //!
-//! This backend gives CarbonHV what AVF's raw config cannot: per-vCPU pinning, mirrored core
-//! capacities and frequency domains, and guest-driven DVFS. It always names the hypervisor
-//! explicitly so a host that also exposes `/dev/kvm` can never silently switch hypervisors, and it
-//! never requests a protected VM.
+//! | Hypervisor | SoC family | Device | Guest SVE / MTE / PMU (crosvm 88c1385) |
+//! | --- | --- | --- | --- |
+//! | KVM / pKVM | Google Tensor, AVF reference devices | `/dev/kvm` | auto / off / off |
+//! | GenieZone | MediaTek Dimensity | `/dev/gzvm` | none / raw cap (left off) / none |
+//! | Halla | Samsung Exynos | `/dev/halla` | none / raw cap (left off) / none |
+//! | Gunyah | Qualcomm Snapdragon | `/dev/gunyah` | none / none / none |
 //!
-//! Guest-visible differences on Gunyah with the pinned crosvm revision: no SVE, no MTE and no
-//! PMU in the guest. These are recorded in the security-difference matrix, not papered over.
+//! The hypervisor is always named explicitly so a host exposing more than one device can never
+//! silently switch backends, and a protected VM is never requested. Unprotected VMs share guest
+//! memory directly (no swiotlb bounce buffers) on every backend, so virtio and gfxstream blob
+//! memory stay zero-copy. MTE stays off: an MTE-enabled guest cannot map the non-MTE gfxstream
+//! host-visible blobs that make presentation zero-copy; enabling it is a measured security
+//! decision for a later slice, not a default.
 
 use std::path::{Component, Path, PathBuf};
 
 use crate::avf::{GFXSTREAM_CONTEXT_TYPES, GFXSTREAM_RENDERER_FEATURES};
 use crate::{
     AvfGraphicsConfig, BackendError, CpuControl, GuestPerformancePlan, HostResources,
-    PerformanceProfile, ProgramInvocation, ValidatedVmSpec,
+    HypervisorKind, PerformanceProfile, ProgramInvocation, ValidatedVmSpec,
 };
 
-/// AVF relocates the aarch64 PCI windows for a partner hypervisor; keep the same layout.
+/// AVF relocates the aarch64 PCI windows on every aarch64 host for a partner hypervisor; keep
+/// the same guest-physical layout on every backend so guests see one CVD1 memory map.
 const AARCH64_PCI_WINDOWS: &str =
     "mem=[start=0x2c000000,size=0x2000000],cam=[start=0x2e000000,size=0x1000000]";
 
 /// Inherited descriptors for one session. crosvm opens them as `/proc/self/fd/N`, exactly as
 /// virtmgr passes its preserved descriptors, so no socket path is ever guessable or shared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct GunyahSessionFds {
+pub struct DirectSessionFds {
     pub control: i32,
     pub touch: i32,
     pub keyboard: i32,
@@ -36,7 +42,7 @@ pub struct GunyahSessionFds {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GunyahLaunchPlan {
+pub struct DirectLaunchPlan {
     pub invocation: ProgramInvocation,
     pub performance: GuestPerformancePlan,
     /// Name under which crosvm registers its Android display service with virtualizationservice;
@@ -45,21 +51,33 @@ pub struct GunyahLaunchPlan {
 }
 
 #[derive(Debug, Clone)]
-pub struct GunyahCrosvmBackend {
+pub struct DirectCrosvmBackend {
     crosvm: PathBuf,
-    gunyah_device: PathBuf,
+    hypervisor: HypervisorKind,
+    hypervisor_device: PathBuf,
     host: Option<HostResources>,
     profile: PerformanceProfile,
 }
 
-impl GunyahCrosvmBackend {
-    pub fn new(crosvm: PathBuf, gunyah_device: PathBuf) -> Self {
+impl DirectCrosvmBackend {
+    pub fn new(crosvm: PathBuf, hypervisor: HypervisorKind, hypervisor_device: PathBuf) -> Self {
         Self {
             crosvm,
-            gunyah_device,
+            hypervisor,
+            hypervisor_device,
             host: None,
             profile: PerformanceProfile::default(),
         }
+    }
+
+    /// The backend's default device node, e.g. `/dev/gzvm` for GenieZone.
+    pub fn for_hypervisor(crosvm: PathBuf, hypervisor: HypervisorKind) -> Self {
+        let device = hypervisor.default_device().unwrap_or_default();
+        Self::new(crosvm, hypervisor, PathBuf::from(device))
+    }
+
+    pub fn hypervisor(&self) -> HypervisorKind {
+        self.hypervisor
     }
 
     pub fn with_host_resources(mut self, host: HostResources) -> Self {
@@ -76,9 +94,12 @@ impl GunyahCrosvmBackend {
         &self,
         spec: &ValidatedVmSpec,
         graphics: &AvfGraphicsConfig,
-        fds: GunyahSessionFds,
-    ) -> Result<GunyahLaunchPlan, BackendError> {
-        if !is_plain_absolute(&self.crosvm) || !is_plain_absolute(&self.gunyah_device) {
+        fds: DirectSessionFds,
+    ) -> Result<DirectLaunchPlan, BackendError> {
+        let Some(hypervisor_name) = self.hypervisor.crosvm_name() else {
+            return Err(BackendError::NoHypervisor);
+        };
+        if !is_plain_absolute(&self.crosvm) || !is_plain_absolute(&self.hypervisor_device) {
             return Err(BackendError::UnsafeRuntimeDirectory);
         }
         let all_fds = [fds.control, fds.touch, fds.keyboard, fds.mouse];
@@ -97,8 +118,8 @@ impl GunyahCrosvmBackend {
 
         let kernel = utf8(&spec.kernel)?;
         let initrd = utf8(&spec.initrd)?;
-        let gunyah_device = utf8(&self.gunyah_device)?;
-        if gunyah_device.contains([',', '[', ']', '=']) {
+        let hypervisor_device = utf8(&self.hypervisor_device)?;
+        if hypervisor_device.contains([',', '[', ']', '=']) {
             return Err(BackendError::UnsafeRuntimeDirectory);
         }
         let display_service_name = format!("carbonhv-{}-{}", spec.instance_id, spec.generation.0);
@@ -106,7 +127,7 @@ impl GunyahCrosvmBackend {
         let mut args: Vec<String> = vec![
             "run".into(),
             "--hypervisor".into(),
-            format!("gunyah[device={gunyah_device}]"),
+            format!("{hypervisor_name}[device={hypervisor_device}]"),
             "--name".into(),
             display_service_name.clone(),
             "--disable-sandbox".into(),
@@ -171,7 +192,7 @@ impl GunyahCrosvmBackend {
         args.push(format!("mouse[path={}]", proc_fd(fds.mouse)));
         args.push(kernel);
 
-        Ok(GunyahLaunchPlan {
+        Ok(DirectLaunchPlan {
             invocation: ProgramInvocation {
                 program: self.crosvm.clone(),
                 args,

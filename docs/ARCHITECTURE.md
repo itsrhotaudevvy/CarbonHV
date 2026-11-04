@@ -758,9 +758,9 @@ Avoid permanent high-frequency wake locks, unbounded polling, and maximum-freque
 
 CarbonHV aims for guests that behave like bare metal from their own point of view. The broker computes a `GuestPerformancePlan` from the measured host topology. It is implemented in `crates/carbon-broker/src/performance.rs` and verified against Snapdragon-shaped topologies.
 
-| Lever | Direct crosvm (Gunyah tier 2) | AVF raw config (KVM, Gunyah tier 1) | Guest requirement |
+| Lever | Direct crosvm (`DirectCrosvmBackend`: KVM, GenieZone, Halla, Gunyah) | AVF raw config (any hypervisor AVF runs on) | Guest requirement |
 | --- | --- | --- | --- |
-| vCPU placement | `--cpu-affinity` 1:1 onto the fastest performance cores; refuse instead of spilling onto efficiency cores | `cpuCount` only, because AVF cannot pin | none |
+| vCPU placement | `--cpu-affinity` 1:1 onto the fastest non-efficiency cores. In-order cores (A53/A55/A510/A520, Kryo Silver) are identified by `MIDR_EL1`, with a capacity-tier fallback; refuse instead of spilling onto them | `cpuCount` only, because AVF cannot pin | none |
 | Scheduler topology | `--cpu-capacity` renormalized to 1024; `--cpus clusters=…,freq-domains=…` copied from host cpufreq policies | not expressible | `GENERIC_ARCH_TOPOLOGY` (arm64 default) |
 | Frequency | `--virt-cpufreq-upstream`: guest schedutil requests reach host DVFS | `boostUclamp` keeps vCPU threads on fast cores at full frequency | `CONFIG_CPUFREQ_VIRT` (`qemu,virtual-cpufreq`) |
 | Memory | `--hugepages` (THP advice), `--balloon-page-reporting` | `hugePages`, `balloon` | `CONFIG_TRANSPARENT_HUGEPAGE`, `CONFIG_VIRTIO_BALLOON`, `CONFIG_PAGE_REPORTING` |
@@ -768,7 +768,7 @@ CarbonHV aims for guests that behave like bare metal from their own point of vie
 
 Guest DVFS and uclamp boosting are never combined. crosvm's `--boost-uclamp` sets `uclamp.min` to full capacity, which would override every guest frequency request. The `Efficient` profile drops both levers and leaves placement to the host for thermally limited sessions; the §24.2 thermal policy chooses between profiles. `carbonctl guest kernel-config` rejects a guest kernel that lacks the contract drivers (exit 3) or the near-native drivers (exit 5). The shared fragment is `guest/common/kernel/cvd1-near-native.fragment`.
 
-Gunyah guests on the pinned crosvm revision expose no SVE, MTE, or PMU. The GrapheneOS-derived guest's security-difference matrix must record the missing MTE, since hardened_malloc's memory tagging is unavailable there. These guest differences are not performance regressions to tune away.
+Guest CPU features depend on the hypervisor. On the pinned crosvm revision, KVM guests get SVE in auto mode; GenieZone, Halla, and Gunyah guests get no SVE, and no backend exposes a PMU. MTE stays off everywhere, because an MTE-enabled guest cannot map the non-MTE gfxstream host-visible blobs used for zero-copy presentation. The GrapheneOS-derived guest's security-difference matrix must record the missing MTE, since hardened_malloc's memory tagging is unavailable. These guest differences are not performance regressions to tune away.
 
 ### 24.4 Benchmark discipline
 
@@ -1014,6 +1014,7 @@ These may be shared roles, but none can be replaced by UI-only development. Trea
 | ADR-012 | No software/remote fallback hidden behind native claims | Keeps product behavior honest | Product scope explicitly changes |
 | ADR-013 | Gunyah is not KVM. On Snapdragon, first enable AVF itself on a controlled host build (non-protected VMs; crosvm falls back from absent `/dev/kvm` to `/dev/gunyah`). A CarbonHV-owned `crosvm --hypervisor gunyah` launch is the second tier, for per-vCPU pinning AVF cannot express. Never request a protected or QCOM trusted VM for the GUI session | Observed 2026-09-30: `/dev/gunyah`, vendor `qvirt`, no `/dev/kvm`, AVF reports VMs unsupported. In AOSP, virtmgr passes `--hypervisor gunyah[...]` only for protected QCOM trusted VMs. Pinned crosvm creates unprotected Gunyah VMs with shared memory and no swiotlb | A Gunyah guest boots and renders through either tier on a physical host, or the vendor hypervisor refuses non-protected VMs |
 | ADR-014 | Near-native performance comes from host-side placement, not guest-visible shortcuts: pin vCPUs 1:1 to performance cores, mirror capacities and frequency domains, forward guest DVFS, advise THP, report free pages. Never disable mitigations or weaken confinement for speed | The guest's own EAS/schedutil then behave as on hardware, and every lever is a host scheduling hint | Measured sustained runs show a lever costs more (thermal or memory) than it gains |
+| ADR-015 | One placement and renderer policy across SoC families (Tensor, Exynos, Dimensity, Snapdragon). Vendor differences live only in probe facts (hypervisor device, MIDR core classes, cpufreq domains) and renderer profile IDs, never in the guest ABI | Keeps both starter guests portable, and keeps qualification tuples comparable across vendors | A vendor needs a guest-visible device or driver difference that the CVD1 contract cannot express |
 
 ## 32. Open questions with owners and deadlines
 

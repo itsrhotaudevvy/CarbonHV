@@ -1,6 +1,6 @@
 use carbon_broker::{
-    CpuControl, CpuCore, CpuFrequencyControl, CpuPlan, GuestPerformancePlan, HostResources,
-    PerformanceProfile, PlacementError,
+    CoreKind, CpuControl, CpuCore, CpuFrequencyControl, CpuPlan, GuestPerformancePlan,
+    HostResources, PerformanceProfile, PlacementError,
 };
 
 fn sm6475() -> HostResources {
@@ -11,6 +11,7 @@ fn sm6475() -> HostResources {
                 index,
                 capacity: if index < 4 { 405 } else { 1024 },
                 freq_domain: if index < 4 { 0 } else { 4 },
+                kind: CoreKind::Unknown,
             })
             .collect(),
     }
@@ -32,7 +33,7 @@ fn near_native_direct_backend_pins_and_hands_dvfs_to_the_guest() {
         plan.crosvm_args(),
         vec![
             "--cpus",
-            "num-cores=4,clusters=[[0,1,2,3]],freq-domains=[[0,1,2,3]]",
+            "num-cores=4,clusters=[[0,1,2,3]],freq-domains=[[0,1,2,3]],sve=[auto=true]",
             "--cpu-affinity",
             "0=4:1=5:2=6:3=7",
             "--cpu-capacity",
@@ -105,7 +106,7 @@ fn efficient_profile_leaves_scheduling_to_the_host() {
         plan.crosvm_args(),
         vec![
             "--cpus",
-            "num-cores=2",
+            "num-cores=2,sve=[auto=true]",
             "--hugepages",
             "--balloon-page-reporting"
         ]
