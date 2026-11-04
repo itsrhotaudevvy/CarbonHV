@@ -273,3 +273,12 @@ CarbonHV has four distinct release domains:
 They should be built and signed independently, with provenance linking the exact compatible versions. Full guest images stay outside the source repository. Development keys/channels remain separate from production keys/channels.
 
 The current repository can produce the Android debug APK and Rust release binaries. It does not yet contain a production signing setup or supported guest image artifacts, so those are not fabricated during development builds.
+
+## Continuous integration and releases
+
+- **CI:** `.github/workflows/ci.yml` runs `scripts/verify.sh` on every push to `main` and on every pull request, on Ubuntu 24.04. It installs Android SDK 36, build-tools 36.0.0, CMake 3.22.1 and NDK 28.2.13676358, and uploads the debug APK as an artifact.
+- **Releases:** `.github/workflows/release.yml` runs when a `v*` tag is pushed. It re-runs the full verifier, builds `carbonctl` for Linux x86_64 and macOS arm64, and attaches those with the debug APK and `SHA256SUMS` to a GitHub release. The release notes come from the matching `CHANGELOG.md` section; the job fails if that section is missing. Tags containing `-` (for example `v0.1.0-alpha.1`) are published as pre-releases.
+- **Cutting a release:**
+  1. Move the `[Unreleased]` entries into a new version section and set `versionName` in `android/app/build.gradle.kts`.
+  2. Commit, then `git tag -a vX.Y.Z -m "CarbonHV vX.Y.Z" && git push origin vX.Y.Z`.
+- **Signing:** the APK is debug-signed by CI. Release signing, signed bundles and catalog trust are tracked as open release gates (`docs/SUPPORT_MATRIX.md`).

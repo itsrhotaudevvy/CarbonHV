@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/itsrhotaudevvy/CarbonHV/security/advisories/new
+    about: Please report vulnerabilities privately, not as public issues.
+  - name: Support matrix and known limitations
+    url: https://github.com/itsrhotaudevvy/CarbonHV/blob/main/docs/SUPPORT_MATRIX.md
+    about: Check what is verified, observed and still hardware-gated before filing.

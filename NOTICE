@@ -1,0 +1,19 @@
+CarbonHV
+Copyright 2026 The CarbonHV Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+CarbonHV drives, but does not redistribute, the following upstream components. Each retains its
+own license, and any future binary bundle must ship their notices and source offers:
+
+- crosvm, Rutabaga and gfxstream (BSD-3-Clause / Apache-2.0, The ChromiumOS / Android Authors)
+- the Android Virtualization Framework and AOSP platform sources (Apache-2.0, The Android Open
+  Source Project)
+- GrapheneOS sources (MIT and upstream AOSP licenses, the GrapheneOS project)
+- Ubuntu Touch / UBports components (GPL-3.0, LGPL-3.0 and others, the UBports Foundation)
+- Linux kernel (GPL-2.0)
+
+"GrapheneOS", "Ubuntu Touch", "Android", "Snapdragon", "Tensor", "Exynos", "Dimensity", "Mali",
+"Immortalis", "Adreno", "PowerVR" and "Xclipse" are trademarks of their respective owners.
+CarbonHV is not affiliated with or endorsed by any of them. The GrapheneOS-derived guest is a
+CarbonHV-maintained build and not an official GrapheneOS release.

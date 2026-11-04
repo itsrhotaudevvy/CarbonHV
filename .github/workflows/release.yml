@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux:
+    name: Verify and build (Linux x86_64 + APK)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install Android SDK components
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install \
+            "platforms;android-36" "build-tools;36.0.0" "cmake;3.22.1" "ndk;28.2.13676358" >/dev/null
+      - name: Verify
+        env:
+          GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-local
+        run: scripts/verify.sh
+      - name: Package
+        run: |
+          cargo build --release -p carbon-cli
+          mkdir -p dist
+          tar -C target/release -czf "dist/carbonctl-${GITHUB_REF_NAME}-x86_64-linux.tar.gz" carbonctl
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/carbonhv-${GITHUB_REF_NAME}-debug.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-linux
+          path: dist/*
+
+  build-macos:
+    name: Build carbonctl (macOS arm64)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Package
+        run: |
+          cargo test -p carbon-core -p carbon-cli
+          cargo build --release -p carbon-cli
+          mkdir -p dist
+          tar -C target/release -czf "dist/carbonctl-${GITHUB_REF_NAME}-aarch64-macos.tar.gz" carbonctl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-macos
+          path: dist/*
+
+  publish:
+    name: Publish GitHub release
+    needs: [build-linux, build-macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS
+      - name: Release notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          test -s notes.md || { echo "CHANGELOG.md has no section for $version" >&2; exit 1; }
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=()
+          [[ "$GITHUB_REF_NAME" == *-* ]] && prerelease=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "CarbonHV $GITHUB_REF_NAME" --notes-file notes.md --verify-tag "${prerelease[@]}"
