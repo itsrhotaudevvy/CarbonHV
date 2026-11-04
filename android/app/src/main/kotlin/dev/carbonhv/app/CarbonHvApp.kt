@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -66,6 +67,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -114,31 +116,64 @@ private val AppStateSaver: Saver<AppState, List<String>> = Saver(
     restore = { AppStateCodec.decode(it) },
 )
 
+/** Landscape phones: too short for a collapsing large app bar or a floating action button. */
+@Composable
+private fun isCompactHeight(): Boolean = LocalConfiguration.current.screenHeightDp < COMPACT_HEIGHT_DP
+
+private const val COMPACT_HEIGHT_DP = 480
+private val READABLE_WIDTH = 720.dp
+
+/** Centers content at a readable width so cards never stretch across a landscape screen. */
+@Composable
+private fun ReadableWidth(content: @Composable () -> Unit) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+        Box(Modifier.widthIn(max = READABLE_WIDTH).fillMaxHeight()) { content() }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TopLevelScaffold(state: AppState, dispatch: (AppEvent) -> Unit) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val compact = isCompactHeight()
+    val scrollBehavior = if (compact) {
+        TopAppBarDefaults.pinnedScrollBehavior()
+    } else {
+        TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    }
     val title = when (state.screen) {
         AppScreen.Catalog -> "Systems"
         AppScreen.Settings -> "Settings"
         else -> "Virtual machines"
     }
+    val showNewVm = state.screen == AppScreen.Library && state.instances.isNotEmpty()
+    val barColors = TopAppBarDefaults.topAppBarColors(
+        containerColor = MaterialTheme.colorScheme.background,
+        scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
+    )
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            LargeTopAppBar(
-                title = { Text(title) },
-                scrollBehavior = scrollBehavior,
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-            )
+            if (compact) {
+                TopAppBar(
+                    title = { Text(title) },
+                    actions = {
+                        if (showNewVm) {
+                            IconButton(onClick = { dispatch(AppEvent.OpenCatalog) }) {
+                                Icon(Icons.Filled.Add, contentDescription = "New VM")
+                            }
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                    colors = barColors,
+                )
+            } else {
+                LargeTopAppBar(title = { Text(title) }, scrollBehavior = scrollBehavior, colors = barColors)
+            }
         },
         bottomBar = { MainNavigation(state.screen, dispatch) },
         floatingActionButton = {
-            if (state.screen == AppScreen.Library && state.instances.isNotEmpty()) {
+            if (showNewVm && !compact) {
                 ExtendedFloatingActionButton(
                     onClick = { dispatch(AppEvent.OpenCatalog) },
                     icon = { Icon(Icons.Filled.Add, contentDescription = null) },
@@ -147,284 +182,288 @@ private fun TopLevelScaffold(state: AppState, dispatch: (AppEvent) -> Unit) {
             }
         },
     ) { padding ->
-        when (state.screen) {
-            AppScreen.Catalog -> CatalogScreen(state, dispatch, padding)
-            AppScreen.Settings -> SettingsScreen(state, padding)
-            else -> LibraryScreen(state, dispatch, padding)
+        ReadableWidth {
+                when (state.screen) {
+                    AppScreen.Catalog -> CatalogScreen(state, dispatch, padding)
+                    AppScreen.Settings -> SettingsScreen(state, padding)
+                    else -> LibraryScreen(state, dispatch, padding)
+                }
+            }
         }
     }
-}
 
-@Composable
-private fun MainNavigation(screen: AppScreen, dispatch: (AppEvent) -> Unit) {
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-        NavigationBarItem(
-            selected = screen == AppScreen.Library,
-            onClick = { dispatch(AppEvent.OpenLibrary) },
-            icon = { Icon(Icons.Filled.Home, contentDescription = null) },
-            label = { Text("Library") },
-        )
-        NavigationBarItem(
-            selected = screen == AppScreen.Catalog,
-            onClick = { dispatch(AppEvent.OpenCatalog) },
-            icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-            label = { Text("Systems") },
-        )
-        NavigationBarItem(
-            selected = screen == AppScreen.Settings,
-            onClick = { dispatch(AppEvent.OpenSettings) },
-            icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
-            label = { Text("Settings") },
-        )
+    @Composable
+    private fun MainNavigation(screen: AppScreen, dispatch: (AppEvent) -> Unit) {
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+            NavigationBarItem(
+                selected = screen == AppScreen.Library,
+                onClick = { dispatch(AppEvent.OpenLibrary) },
+                icon = { Icon(Icons.Filled.Home, contentDescription = null) },
+                label = { Text("Library") },
+            )
+            NavigationBarItem(
+                selected = screen == AppScreen.Catalog,
+                onClick = { dispatch(AppEvent.OpenCatalog) },
+                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                label = { Text("Systems") },
+            )
+            NavigationBarItem(
+                selected = screen == AppScreen.Settings,
+                onClick = { dispatch(AppEvent.OpenSettings) },
+                icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+                label = { Text("Settings") },
+            )
+        }
     }
-}
 
-/** Rounded monogram tile identifying a guest OS without borrowing its logo. */
-@Composable
-private fun OsBadge(bundleId: String, size: Int = 48) {
-    val accent = osAccent(bundleId)
-    Box(
-        modifier = Modifier
-            .size(size.dp)
-            .background(accent.container, RoundedCornerShape((size / 3.4f).dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            accent.monogram,
-            color = accent.content,
-            style = if (size >= 56) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.Bold,
-        )
+    /** Rounded monogram tile identifying a guest OS without borrowing its logo. */
+    @Composable
+    private fun OsBadge(bundleId: String, size: Int = 48) {
+        val accent = osAccent(bundleId)
+        Box(
+            modifier = Modifier
+                .size(size.dp)
+                .background(accent.container, RoundedCornerShape((size / 3.4f).dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                accent.monogram,
+                color = accent.content,
+                style = if (size >= 56) MaterialTheme.typography.headlineSmall else MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+        }
     }
-}
 
-/** Small rounded label, for example "Unofficial" or "4 GB RAM". */
-@Composable
-private fun Tag(text: String, emphasized: Boolean = false) {
-    val colors = MaterialTheme.colorScheme
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = if (emphasized) colors.tertiaryContainer else colors.surfaceContainerHighest,
-        contentColor = if (emphasized) colors.onTertiaryContainer else colors.onSurfaceVariant,
-    ) {
-        Text(
-            text,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-            style = MaterialTheme.typography.labelMedium,
-        )
+    /** Small rounded label, for example "Unofficial" or "4 GB RAM". */
+    @Composable
+    private fun Tag(text: String, emphasized: Boolean = false) {
+        val colors = MaterialTheme.colorScheme
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = if (emphasized) colors.tertiaryContainer else colors.surfaceContainerHighest,
+            contentColor = if (emphasized) colors.onTertiaryContainer else colors.onSurfaceVariant,
+        ) {
+            Text(
+                text,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
     }
-}
 
-@Composable
-private fun StatusPill(state: SessionUiState) {
-    val colors = MaterialTheme.colorScheme
-    val (label, dot) = when (state) {
-        SessionUiState.Running -> "Running" to Color(0xFF2E9E5B)
-        SessionUiState.Starting -> "Starting" to colors.primary
-        SessionUiState.Paused -> "Paused" to colors.tertiary
-        SessionUiState.Stopping -> "Stopping" to colors.tertiary
-        SessionUiState.Crashed -> "Needs attention" to colors.error
-        SessionUiState.Recovering -> "Recovering" to colors.tertiary
-        SessionUiState.Stopped -> "Stopped" to colors.outline
+    @Composable
+    private fun StatusPill(state: SessionUiState) {
+        val colors = MaterialTheme.colorScheme
+        val (label, dot) = when (state) {
+            SessionUiState.Running -> "Running" to Color(0xFF2E9E5B)
+            SessionUiState.Starting -> "Starting" to colors.primary
+            SessionUiState.Paused -> "Paused" to colors.tertiary
+            SessionUiState.Stopping -> "Stopping" to colors.tertiary
+            SessionUiState.Crashed -> "Needs attention" to colors.error
+            SessionUiState.Recovering -> "Recovering" to colors.tertiary
+            SessionUiState.Stopped -> "Stopped" to colors.outline
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Box(Modifier.size(8.dp).background(dot, CircleShape))
+            Text(label, style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
+        }
     }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Box(Modifier.size(8.dp).background(dot, CircleShape))
-        Text(label, style = MaterialTheme.typography.labelMedium, color = colors.onSurfaceVariant)
-    }
-}
 
-@Composable
-private fun cardColors() = CardDefaults.cardColors(
-    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-)
+    @Composable
+    private fun cardColors() = CardDefaults.cardColors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+    )
 
-@Composable
-private fun LibraryScreen(state: AppState, dispatch: (AppEvent) -> Unit, padding: PaddingValues) {
-    if (state.instances.isEmpty()) {
-        EmptyState(
-            modifier = Modifier.padding(padding),
-            icon = Icons.Filled.PlayArrow,
-            title = "No virtual machines yet",
-            body = "Pick a mobile OS and CarbonHV creates an isolated instance that runs on this phone's own hardware.",
-            actionLabel = "Browse systems",
-            onAction = { dispatch(AppEvent.OpenCatalog) },
-        )
-        return
-    }
-    LazyColumn(
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = padding.calculateTopPadding() + 4.dp,
-            bottom = padding.calculateBottomPadding() + 88.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        items(state.instances, key = { it.id }) { instance ->
-            val bundle = state.catalog.firstOrNull { it.id == instance.bundleId }
-            Card(
-                onClick = { dispatch(AppEvent.OpenSession(instance.id)) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = cardColors(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+    @Composable
+    private fun LibraryScreen(state: AppState, dispatch: (AppEvent) -> Unit, padding: PaddingValues) {
+        if (state.instances.isEmpty()) {
+            EmptyState(
+                modifier = Modifier.padding(padding),
+                icon = Icons.Filled.PlayArrow,
+                title = "No virtual machines yet",
+                body = "Pick a mobile OS and CarbonHV creates an isolated instance that runs on this phone's own hardware.",
+                actionLabel = "Browse systems",
+                onAction = { dispatch(AppEvent.OpenCatalog) },
+            )
+            return
+        }
+        LazyColumn(
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = padding.calculateTopPadding() + 4.dp,
+                bottom = padding.calculateBottomPadding() + 88.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(state.instances, key = { it.id }) { instance ->
+                val bundle = state.catalog.firstOrNull { it.id == instance.bundleId }
+                Card(
+                    onClick = { dispatch(AppEvent.OpenSession(instance.id)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = cardColors(),
                 ) {
-                    OsBadge(instance.bundleId)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(instance.name, style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            instanceSubtitle(instance, bundle),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        StatusPill(instance.sessionState)
-                    }
-                    FilledTonalButton(onClick = { dispatch(AppEvent.OpenSession(instance.id)) }) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.size(6.dp))
-                        Text("Open")
+                    Row(
+                        modifier = Modifier.padding(16.dp).fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        OsBadge(instance.bundleId)
+                        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(instance.name, style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                instanceSubtitle(instance, bundle),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            StatusPill(instance.sessionState)
+                        }
+                        FilledTonalButton(onClick = { dispatch(AppEvent.OpenSession(instance.id)) }) {
+                            Icon(Icons.Filled.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.size(6.dp))
+                            Text("Open")
+                        }
                     }
                 }
             }
         }
     }
-}
 
-/** The system behind an instance, without repeating a name the user kept unchanged. */
-internal fun instanceSubtitle(instance: VmInstance, bundle: CatalogBundle?): String = when {
-    bundle == null -> instance.bundleId
-    bundle.platform.isEmpty() -> bundle.name
-    instance.name.equals(bundle.name, ignoreCase = true) -> bundle.platform
-    else -> "${bundle.name} · ${bundle.platform}"
-}
+    /** The system behind an instance, without repeating a name the user kept unchanged. */
+    internal fun instanceSubtitle(instance: VmInstance, bundle: CatalogBundle?): String = when {
+        bundle == null -> instance.bundleId
+        bundle.platform.isEmpty() -> bundle.name
+        instance.name.equals(bundle.name, ignoreCase = true) -> bundle.platform
+        else -> "${bundle.name} · ${bundle.platform}"
+    }
 
-@Composable
-private fun CatalogScreen(state: AppState, dispatch: (AppEvent) -> Unit, padding: PaddingValues) {
-    LazyColumn(
-        contentPadding = PaddingValues(
-            start = 16.dp,
-            end = 16.dp,
-            top = padding.calculateTopPadding() + 4.dp,
-            bottom = padding.calculateBottomPadding() + 16.dp,
-        ),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item {
-            Text(
-                "Each system runs as a hardware-virtualized ARM64 guest with its own isolated storage.",
-                modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 6.dp),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    @Composable
+    private fun CatalogScreen(state: AppState, dispatch: (AppEvent) -> Unit, padding: PaddingValues) {
+        LazyColumn(
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = padding.calculateTopPadding() + 4.dp,
+                bottom = padding.calculateBottomPadding() + 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item {
+                Text(
+                    "Each system runs as a hardware-virtualized ARM64 guest with its own isolated storage.",
+                    modifier = Modifier.padding(start = 4.dp, end = 4.dp, bottom = 6.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            items(state.catalog, key = { it.id }) { bundle ->
+                Card(modifier = Modifier.fillMaxWidth(), colors = cardColors()) {
+                    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                            OsBadge(bundle.id)
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text(bundle.name, style = MaterialTheme.typography.titleMedium)
+                                    if (bundle.unofficial) Tag("Unofficial", emphasized = true)
+                                }
+                                Text(
+                                    bundle.platform,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Text(bundle.description, style = MaterialTheme.typography.bodyMedium)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Tag("${bundle.integrationProfile} sharing")
+                            Tag("${formatMemory(bundle.recommendedMemoryMiB)} RAM")
+                            Spacer(Modifier.weight(1f))
+                            FilledTonalButton(onClick = { dispatch(AppEvent.OpenCreate(bundle.id)) }) {
+                                Text("Create")
+                            }
+                        }
+                    }
+                }
+            }
         }
-        items(state.catalog, key = { it.id }) { bundle ->
-            Card(modifier = Modifier.fillMaxWidth(), colors = cardColors()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        OsBadge(bundle.id)
-                        Column(Modifier.weight(1f)) {
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    private fun CreateScreen(state: AppState, dispatch: (AppEvent) -> Unit) {
+        val bundle = state.catalog.firstOrNull { it.id == state.createBundleId }
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TopAppBar(
+                    title = { Text("New virtual machine") },
+                    navigationIcon = {
+                        IconButton(onClick = { dispatch(AppEvent.OpenCatalog) }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
+                )
+            },
+        ) { padding ->
+            ReadableWidth {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                if (bundle != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        OsBadge(bundle.id, size = 56)
+                        Column {
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(bundle.name, style = MaterialTheme.typography.titleMedium)
+                                Text(bundle.name, style = MaterialTheme.typography.titleLarge)
                                 if (bundle.unofficial) Tag("Unofficial", emphasized = true)
                             }
                             Text(
-                                bundle.platform,
-                                style = MaterialTheme.typography.bodySmall,
+                                "${bundle.platform} · ${formatMemory(bundle.recommendedMemoryMiB)} RAM · ${bundle.integrationProfile} sharing",
+                                style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
                     }
-                    Text(bundle.description, style = MaterialTheme.typography.bodyMedium)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Tag("${bundle.integrationProfile} sharing")
-                        Tag("${formatMemory(bundle.recommendedMemoryMiB)} RAM")
-                        Spacer(Modifier.weight(1f))
-                        FilledTonalButton(onClick = { dispatch(AppEvent.OpenCreate(bundle.id)) }) {
-                            Text("Create")
-                        }
-                    }
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CreateScreen(state: AppState, dispatch: (AppEvent) -> Unit) {
-    val bundle = state.catalog.firstOrNull { it.id == state.createBundleId }
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = { Text("New virtual machine") },
-                navigationIcon = {
-                    IconButton(onClick = { dispatch(AppEvent.OpenCatalog) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-        ) {
-            if (bundle != null) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    OsBadge(bundle.id, size = 56)
-                    Column {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Text(bundle.name, style = MaterialTheme.typography.titleLarge)
-                            if (bundle.unofficial) Tag("Unofficial", emphasized = true)
-                        }
+                OutlinedTextField(
+                    value = state.createName,
+                    onValueChange = { dispatch(AppEvent.CreateNameChanged(it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Name") },
+                    placeholder = { Text(bundle?.name ?: "My phone") },
+                    supportingText = { Text("Shown in your library. Each name must be unique.") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Words,
+                        imeAction = ImeAction.Done,
+                    ),
+                )
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                ) {
+                    Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                         Text(
-                            "${bundle.platform} · ${formatMemory(bundle.recommendedMemoryMiB)} RAM · ${bundle.integrationProfile} sharing",
+                            "Starting this VM needs hardware CPU virtualization and accelerated graphics on this phone. CarbonHV never falls back to slow software emulation.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                     }
                 }
+                Button(
+                    onClick = { dispatch(AppEvent.ConfirmCreate) },
+                    enabled = state.canCreate,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                ) { Text("Create virtual machine") }
             }
-            OutlinedTextField(
-                value = state.createName,
-                onValueChange = { dispatch(AppEvent.CreateNameChanged(it)) },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("Name") },
-                placeholder = { Text(bundle?.name ?: "My phone") },
-                supportingText = { Text("Shown in your library. Each name must be unique.") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Words,
-                    imeAction = ImeAction.Done,
-                ),
-            )
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
-            ) {
-                Row(Modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Icon(Icons.Filled.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
-                    Text(
-                        "Starting this VM needs hardware CPU virtualization and accelerated graphics on this phone. CarbonHV never falls back to slow software emulation.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                }
-            }
-            Button(
-                onClick = { dispatch(AppEvent.ConfirmCreate) },
-                enabled = state.canCreate,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-            ) { Text("Create virtual machine") }
         }
     }
 }
