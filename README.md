@@ -23,13 +23,13 @@ Both are recipe-only today ([`guest/lineageos`](guest/lineageos), [`guest/pixelo
 
 ## Screenshots
 
-Captured from the debug APK on an Android 16 (API 36) arm64 emulator. A stock build has no CarbonHV host integration, so the session screen fails closed as designed.
+Captured from the debug APK on an Android 16 (API 36) arm64 emulator. A stock build has no CarbonHV host integration, so opening a VM fails closed as designed.
 
-| Library | Systems | Create |
-| :---: | :---: | :---: |
-| <img src="docs/screenshots/04-library.png" width="230" alt="Library with GrapheneOS and Ubuntu Touch instances"> | <img src="docs/screenshots/02-catalog.png" width="230" alt="Catalog of starter systems"> | <img src="docs/screenshots/03-create-ubuntu-touch.png" width="230" alt="Create an Ubuntu Touch instance"> |
-| **Empty library** | **Session on a stock build** | **Settings** |
-| <img src="docs/screenshots/01-library-empty.png" width="230" alt="Empty library"> | <img src="docs/screenshots/05-session-host-unavailable.png" width="230" alt="Host integration unavailable"> | <img src="docs/screenshots/06-settings.png" width="230" alt="Settings: host compatibility and privacy"> |
+| Library | Systems | New VM | Stock phone |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/02-library.png" width="200" alt="Library with GrapheneOS-derived, LineageOS, PixelOS and Ubuntu Touch instances"> | <img src="docs/screenshots/03-systems.png" width="200" alt="Systems catalog"> | <img src="docs/screenshots/04-create.png" width="200" alt="Create a LineageOS virtual machine"> | <img src="docs/screenshots/05-session-host-unavailable.png" width="200" alt="Host integration unavailable"> |
+| **Settings** | **Empty library** | **Dark library** | **Dark systems** |
+| <img src="docs/screenshots/06-settings.png" width="200" alt="Settings: host compatibility, privacy defaults, about"> | <img src="docs/screenshots/01-library-empty.png" width="200" alt="Empty library"> | <img src="docs/screenshots/07-library-dark.png" width="200" alt="Library in dark theme"> | <img src="docs/screenshots/08-systems-dark.png" width="200" alt="Systems in dark theme"> |
 
 ## Phones and SoCs
 

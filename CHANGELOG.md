@@ -51,7 +51,11 @@ First public development milestone. The source, contracts and tooling are verifi
   - LineageOS (`lineage-24.0`, Android 17; `lineage-23.2` selectable) and PixelOS (`seventeen`, Android 17; `sixteen-qpr2` selectable);
   - one shared CVD1 product overlay on the AOSP cuttlefish arm64-only phone (ADR-016), with direct-boot kernel, initrd and super artifacts;
   - bundles, broker starter profiles and app catalog entries.
-- **Android app:** Compose library, catalog, create, settings and recovery flows, plus an immersive `SurfaceView` session with host-owned escape, geometry generations, input mapping and reconnect policy.
+- **Android app:**
+  - a Material 3 manager with CarbonHV's own light and dark palette, a DayNight window theme and an adaptive launcher icon;
+  - a library with OS badges and status pills, a Systems catalog with "Unofficial" chips, and a guided New VM flow;
+  - grouped settings, plus centered status and recovery screens;
+  - an immersive `SurfaceView` session with host-owned escape, geometry generations, input mapping and reconnect policy.
 - **Qualification:**
   - a read-only ADB host probe covering hypervisor, AVF properties, vendor device label, core types, frequency domains, THP, GPU and renderer profile;
   - fail-closed minimal and sustained GPU qualification;
@@ -62,6 +66,8 @@ First public development milestone. The source, contracts and tooling are verifi
 
 - Host topology no longer mixes `cpu_capacity` and max-frequency units across cores.
 - The GLES renderer parser handles vendor names that contain commas, such as `Samsung Electronics Co., Ltd.`.
+- The app no longer leaks its host-integration `ServiceConnection` when the activity is destroyed on a build without the host integration, and it unbinds before rebinding after binding death.
+- The library and any in-progress New VM form now survive configuration changes (rotation, dark mode) and process recreation.
 - Duplicate ADR-011 numbering in the architecture document.
 
 ### Known limitations

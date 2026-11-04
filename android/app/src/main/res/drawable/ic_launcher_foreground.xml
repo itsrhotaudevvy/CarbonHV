@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CarbonHV mark: a phone running a guest screen. Drawn inside the 66dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:pathData="M44,28 H64 A8,8 0 0 1 72,36 V72 A8,8 0 0 1 64,80 H44 A8,8 0 0 1 36,72 V36 A8,8 0 0 1 44,28 Z" />
+    <path
+        android:fillColor="#9CF1F0"
+        android:pathData="M46,37 H62 A3,3 0 0 1 65,40 V68 A3,3 0 0 1 62,71 H46 A3,3 0 0 1 43,68 V40 A3,3 0 0 1 46,37 Z" />
+    <path
+        android:fillColor="#006A6A"
+        android:pathData="M50.5,47 L59.5,54 L50.5,61 Z" />
+</vector>

@@ -18,7 +18,17 @@ data class CatalogBundle(
     val description: String,
     val integrationProfile: String,
     val recommendedMemoryMiB: Int,
+    /** Upstream base shown under the name, for example "Android 17". */
+    val platform: String = "",
+    /** Built by CarbonHV from a project that does not publish this virtual device itself. */
+    val unofficial: Boolean = false,
 )
+
+/** "4 GB" for whole gibibytes, otherwise "3.5 GB"; never fractional noise like "3.999". */
+fun formatMemory(mib: Int): String {
+    val tenths = (mib * 10 + 512) / 1024
+    return if (tenths % 10 == 0) "${tenths / 10} GB" else "${tenths / 10}.${tenths % 10} GB"
+}
 
 data class VmInstance(
     val id: String,
@@ -52,30 +62,36 @@ data class AppState(
                 CatalogBundle(
                     id = "grapheneos",
                     name = "GrapheneOS-derived",
-                    description = "CarbonHV-maintained ARM64 virtual-device build",
+                    description = "Hardened Android as a CarbonHV-maintained ARM64 virtual device.",
                     integrationProfile = "Private",
                     recommendedMemoryMiB = 4096,
+                    platform = "Android 17",
                 ),
                 CatalogBundle(
                     id = "lineageos",
-                    name = "LineageOS (unofficial)",
-                    description = "CarbonHV virtual-device build of LineageOS for Android 17",
+                    name = "LineageOS",
+                    description = "The community Android distribution, built for the CarbonHV virtual device.",
                     integrationProfile = "Balanced",
                     recommendedMemoryMiB = 4096,
+                    platform = "LineageOS 24 · Android 17",
+                    unofficial = true,
                 ),
                 CatalogBundle(
                     id = "pixelos",
-                    name = "PixelOS (unofficial)",
-                    description = "CarbonHV virtual-device build of PixelOS for Android 17",
+                    name = "PixelOS",
+                    description = "A Pixel-style AOSP experience, built for the CarbonHV virtual device.",
                     integrationProfile = "Balanced",
                     recommendedMemoryMiB = 4096,
+                    platform = "PixelOS 17 · Android 17",
+                    unofficial = true,
                 ),
                 CatalogBundle(
                     id = "ubuntu-touch",
                     name = "Ubuntu Touch",
-                    description = "Lomiri mobile Linux virtual-device port",
+                    description = "Mobile Linux with the Lomiri shell, ported to the CarbonHV virtual device.",
                     integrationProfile = "Balanced",
                     recommendedMemoryMiB = 3072,
+                    platform = "Ubuntu Touch 24.04",
                 ),
             ),
             instances = emptyList(),
@@ -150,4 +166,59 @@ fun reduceApp(state: AppState, event: AppEvent): AppState = when (event) {
         screen = AppScreen.Recovery,
         recoveryFailure = event.failure,
     )
+}
+
+/**
+ * Flattens the user-visible state into saveable primitives so the library, an in-progress create
+ * form and the open screen survive configuration changes (rotation, dark mode) and process death.
+ * The static catalog is not saved; restored instances whose bundle disappeared are dropped.
+ */
+object AppStateCodec {
+    private const val FIELDS_PER_INSTANCE = 4
+    private const val HEADER = 6
+    private const val VERSION = "1"
+
+    fun encode(state: AppState): List<String> = buildList {
+        add(VERSION)
+        add(state.screen.name)
+        add(state.createBundleId.orEmpty())
+        add(state.createName)
+        add(state.activeInstanceId.orEmpty())
+        add(state.recoveryFailure?.name.orEmpty())
+        state.instances.forEach { instance ->
+            add(instance.id)
+            add(instance.name)
+            add(instance.bundleId)
+            add(instance.sessionState.name)
+        }
+    }
+
+    fun decode(saved: List<String>, base: AppState = AppState.initial()): AppState {
+        if (saved.size < HEADER || saved[0] != VERSION || (saved.size - HEADER) % FIELDS_PER_INSTANCE != 0) {
+            return base
+        }
+        val bundleIds = base.catalog.map { it.id }.toSet()
+        val instances = saved.drop(HEADER).chunked(FIELDS_PER_INSTANCE).mapNotNull { (id, name, bundleId, session) ->
+            if (bundleId !in bundleIds) return@mapNotNull null
+            VmInstance(
+                id = id,
+                name = name,
+                bundleId = bundleId,
+                sessionState = enumValueOrNull<SessionUiState>(session) ?: SessionUiState.Stopped,
+            )
+        }
+        val activeId = saved[4].ifEmpty { null }?.takeIf { id -> instances.any { it.id == id } }
+        val screen = enumValueOrNull<AppScreen>(saved[1]) ?: AppScreen.Library
+        return base.copy(
+            screen = if (screen == AppScreen.Session && activeId == null) AppScreen.Library else screen,
+            instances = instances,
+            createBundleId = saved[2].ifEmpty { null }?.takeIf { it in bundleIds },
+            createName = saved[3],
+            activeInstanceId = activeId,
+            recoveryFailure = enumValueOrNull<FailureKind>(saved[5]),
+        )
+    }
+
+    private inline fun <reified T : Enum<T>> enumValueOrNull(name: String): T? =
+        enumValues<T>().firstOrNull { it.name == name }
 }
