@@ -12,6 +12,10 @@ qualification claim**. See [`docs/SUPPORT_MATRIX.md`](docs/SUPPORT_MATRIX.md).
 - Snapdragon controlled-host fragment (`host/product/snapdragon/`). It declares AVF VM support in the boot config, adds the one-line `vm_manager_device_type` vendor policy for the observed `vendor_gunyah_dev` label, and sets THP to `madvise`. A contract test checks it against the physical probe evidence.
 - Physical re-probe of the Redmi `kunzite` (Snapdragon 6 Gen 3) on 2026-11-04.
 
+### Fixed
+
+- Landscape phones: on short windows the manager now uses a compact app bar with "New VM" as a bar action, and keeps content at a centered, readable width. On the Snapdragon phone, the large collapsing bar had taken half the screen and the New VM button covered the card's Open button.
+
 ### Changed
 
 - The performance plan drops huge-page advice on hosts whose runtime THP mode is `never` (`ThpMode`), as observed on stock Snapdragon firmware.
