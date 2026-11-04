@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
 use carbon_broker::{
-    AvfGraphicsConfig, BackendError, CpuCore, GunyahCrosvmBackend, GunyahSessionFds, HostResources,
-    PerformanceProfile, PlacementError, ValidatedVmDisk, ValidatedVmSpec,
+    AvfGraphicsConfig, BackendError, CoreKind, CpuCore, DirectCrosvmBackend, DirectSessionFds,
+    HostResources, HypervisorKind, PerformanceProfile, PlacementError, ValidatedVmDisk,
+    ValidatedVmSpec,
 };
 use carbon_core::Generation;
 
@@ -37,21 +38,22 @@ fn sm6475() -> HostResources {
                 index,
                 capacity: if index < 4 { 405 } else { 1024 },
                 freq_domain: if index < 4 { 0 } else { 4 },
+                kind: CoreKind::Unknown,
             })
             .collect(),
     }
 }
 
-fn backend() -> GunyahCrosvmBackend {
-    GunyahCrosvmBackend::new(
+fn backend() -> DirectCrosvmBackend {
+    DirectCrosvmBackend::for_hypervisor(
         PathBuf::from("/apex/com.android.virt/bin/crosvm"),
-        PathBuf::from("/dev/gunyah"),
+        HypervisorKind::Gunyah,
     )
     .with_host_resources(sm6475())
 }
 
-fn fds() -> GunyahSessionFds {
-    GunyahSessionFds {
+fn fds() -> DirectSessionFds {
+    DirectSessionFds {
         control: 10,
         touch: 11,
         keyboard: 12,
@@ -88,7 +90,7 @@ fn sm6475_near_native_plan_is_an_exact_argv() {
         "--mem",
         "4096",
         "--cpus",
-        "num-cores=4,clusters=[[0,1,2,3]],freq-domains=[[0,1,2,3]]",
+        "num-cores=4,clusters=[[0,1,2,3]],freq-domains=[[0,1,2,3]],sve=[auto=true]",
         "--cpu-affinity",
         "0=4:1=5:2=6:3=7",
         "--cpu-capacity",
@@ -156,13 +158,18 @@ fn stdio_or_duplicate_descriptors_are_rejected() {
 
 #[test]
 fn relative_or_key_value_breaking_paths_are_rejected() {
-    let relative = GunyahCrosvmBackend::new(PathBuf::from("crosvm"), PathBuf::from("/dev/gunyah"));
+    let relative = DirectCrosvmBackend::new(
+        PathBuf::from("crosvm"),
+        HypervisorKind::Gunyah,
+        PathBuf::from("/dev/gunyah"),
+    );
     assert_eq!(
         relative.build_launch_plan(&spec(), &graphics(), fds()),
         Err(BackendError::UnsafeRuntimeDirectory)
     );
-    let device = GunyahCrosvmBackend::new(
+    let device = DirectCrosvmBackend::new(
         PathBuf::from("/apex/com.android.virt/bin/crosvm"),
+        HypervisorKind::Gunyah,
         PathBuf::from("/dev/gunyah],protected=true"),
     );
     assert_eq!(
@@ -204,4 +211,43 @@ fn efficient_profile_drops_pinning_but_keeps_the_explicit_hypervisor() {
     assert!(!args.iter().any(|arg| arg == "--cpu-affinity"));
     assert!(!args.iter().any(|arg| arg == "--virt-cpufreq-upstream"));
     assert!(!args.iter().any(|arg| arg == "--boost-uclamp"));
+}
+
+#[test]
+fn every_phone_hypervisor_is_named_explicitly_with_its_device() {
+    for (kind, expected) in [
+        (HypervisorKind::Kvm, "kvm[device=/dev/kvm]"),
+        (HypervisorKind::GenieZone, "geniezone[device=/dev/gzvm]"),
+        (HypervisorKind::Halla, "halla[device=/dev/halla]"),
+        (HypervisorKind::Gunyah, "gunyah[device=/dev/gunyah]"),
+    ] {
+        let plan = DirectCrosvmBackend::for_hypervisor(
+            PathBuf::from("/apex/com.android.virt/bin/crosvm"),
+            kind,
+        )
+        .with_host_resources(sm6475())
+        .build_launch_plan(&spec(), &graphics(), fds())
+        .unwrap();
+        assert_eq!(plan.invocation.args[1..3], ["--hypervisor", expected]);
+        // The same pinned near-native plan applies to every backend.
+        assert!(
+            plan.invocation
+                .args
+                .iter()
+                .any(|arg| arg == "0=4:1=5:2=6:3=7")
+        );
+        assert!(!plan.invocation.args.iter().any(|arg| arg.contains("mte=")));
+    }
+}
+
+#[test]
+fn no_hypervisor_means_no_launch_plan() {
+    let backend = DirectCrosvmBackend::for_hypervisor(
+        PathBuf::from("/apex/com.android.virt/bin/crosvm"),
+        HypervisorKind::None,
+    );
+    assert_eq!(
+        backend.build_launch_plan(&spec(), &graphics(), fds()),
+        Err(BackendError::NoHypervisor)
+    );
 }

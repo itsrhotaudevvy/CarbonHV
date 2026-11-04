@@ -109,7 +109,7 @@ impl GuestPerformancePlan {
                 let domains = cpu_set_list(&placement.freq_domains);
                 args.push("--cpus".into());
                 args.push(format!(
-                    "num-cores={},clusters={domains},freq-domains={domains}",
+                    "num-cores={},clusters={domains},freq-domains={domains},sve=[auto=true]",
                     placement.pins.len()
                 ));
                 args.push("--cpu-affinity".into());
@@ -133,7 +133,7 @@ impl GuestPerformancePlan {
             }
             CpuPlan::Floating { vcpus } => {
                 args.push("--cpus".into());
-                args.push(format!("num-cores={vcpus}"));
+                args.push(format!("num-cores={vcpus},sve=[auto=true]"));
             }
         }
         match self.frequency {

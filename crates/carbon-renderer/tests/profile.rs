@@ -126,3 +126,32 @@ fn adreno_backend_admits_adreno_and_rejects_mali_hosts() {
     host.identity.renderer = "Adreno (TM) 710".into();
     assert_eq!(backend.validate_host(&host), Ok(()));
 }
+
+#[test]
+fn builtin_backends_all_run_inside_avf_crosvm_gfxstream() {
+    let backends = carbon_renderer::builtin_backends();
+    let ids: Vec<&str> = backends
+        .iter()
+        .map(|backend| backend.profile.id.as_str())
+        .collect();
+    assert_eq!(
+        ids,
+        vec![
+            "gfxstream-vulkan-mali",
+            "gfxstream-vulkan-immortalis",
+            "gfxstream-vulkan-adreno",
+            "gfxstream-vulkan-powervr",
+            "gfxstream-vulkan-xclipse",
+        ]
+    );
+    let mali = gfxstream_vulkan_mali_backend();
+    for backend in backends {
+        assert_eq!(
+            backend.integration, mali.integration,
+            "{}",
+            backend.profile.id
+        );
+        assert_eq!(backend.sandbox, mali.sandbox, "{}", backend.profile.id);
+        assert_eq!(backend.rutabaga, mali.rutabaga, "{}", backend.profile.id);
+    }
+}

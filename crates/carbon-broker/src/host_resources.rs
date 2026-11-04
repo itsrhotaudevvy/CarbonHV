@@ -4,14 +4,50 @@ use std::path::Path;
 
 use crate::BrokerPolicy;
 
-/// Cores at or above this share of the fastest core's capacity are treated as performance cores.
-const PERFORMANCE_CAPACITY_PERCENT: u64 = 70;
+/// Without microarchitecture identity, the slowest capacity tier is treated as efficiency cores
+/// only when it is below this share of the fastest core.
+const EFFICIENCY_TIER_PERCENT: u64 = 50;
 /// Memory always left to the Android host, however small the phone.
 const HOST_RESERVE_FLOOR_MIB: u64 = 3072;
 /// Share of physical memory left to the Android host on larger phones.
 const HOST_RESERVE_PERCENT: u64 = 40;
 /// Capacity scale used by the Linux scheduler and by crosvm `--cpu-capacity`.
 pub const CAPACITY_SCALE: u64 = 1024;
+
+/// Microarchitectural class from `MIDR_EL1`. In-order efficiency cores (Cortex-A53/A55/A510/A520
+/// and Qualcomm Kryo "Silver") run vCPU threads far slower than their capacity number suggests
+/// for interactive work, so they never host pinned vCPUs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CoreKind {
+    Efficiency,
+    Performance,
+    Unknown,
+}
+
+impl CoreKind {
+    /// Classifies a raw `MIDR_EL1` value (implementer bits 31:24, part number bits 15:4).
+    pub fn from_midr(midr: u64) -> Self {
+        let implementer = (midr >> 24) & 0xff;
+        let part = (midr >> 4) & 0xfff;
+        match (implementer, part) {
+            // Arm Ltd: Cortex-A53, A35, A55, A510, A520.
+            (0x41, 0xd03 | 0xd04 | 0xd05 | 0xd46 | 0xd80) => CoreKind::Efficiency,
+            // Qualcomm Kryo 2xx/3xx/4xx Silver (A53/A55-derived).
+            (0x51, 0x801 | 0x803 | 0x805) => CoreKind::Efficiency,
+            (0x41 | 0x51 | 0x53 | 0x61, _) => CoreKind::Performance,
+            _ => CoreKind::Unknown,
+        }
+    }
+
+    /// Parses sysfs `regs/identification/midr_el1` text such as `0x00000000410fd050`.
+    pub fn parse_midr(text: &str) -> Option<u64> {
+        let text = text.trim();
+        let hex = text
+            .strip_prefix("0x")
+            .or_else(|| text.strip_prefix("0X"))?;
+        u64::from_str_radix(hex, 16).ok()
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CpuCore {
@@ -23,6 +59,18 @@ pub struct CpuCore {
     /// Lowest CPU index of the cpufreq policy (frequency domain) this core belongs to. Cores that
     /// change frequency together must be presented to the guest as one frequency domain.
     pub freq_domain: usize,
+    pub kind: CoreKind,
+}
+
+impl CpuCore {
+    pub fn new(index: usize, capacity: u64, freq_domain: usize, kind: CoreKind) -> Self {
+        Self {
+            index,
+            capacity,
+            freq_domain,
+            kind,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,6 +142,7 @@ impl HostResources {
             capacity: Option<u64>,
             max_freq_khz: Option<u64>,
             freq_domain: Option<usize>,
+            kind: CoreKind,
         }
 
         let mut raw = Vec::new();
@@ -121,6 +170,10 @@ impl HostResources {
                 freq_domain: read_text("cpufreq/related_cpus")
                     .as_deref()
                     .and_then(Self::parse_freq_domain_leader),
+                kind: read_text("regs/identification/midr_el1")
+                    .as_deref()
+                    .and_then(CoreKind::parse_midr)
+                    .map_or(CoreKind::Unknown, CoreKind::from_midr),
             });
         }
         raw.sort_by_key(|core| core.index);
@@ -144,6 +197,7 @@ impl HostResources {
                 index: core.index,
                 capacity,
                 freq_domain: core.freq_domain.unwrap_or(core.index),
+                kind: core.kind,
             });
         }
         if cores.is_empty() {
@@ -176,11 +230,44 @@ impl HostResources {
             .unwrap_or(0)
     }
 
+    /// Cores that may host latency-sensitive vCPU threads. Known in-order efficiency cores are
+    /// excluded; without microarchitecture identity, only a slow capacity tier is excluded, so
+    /// strong mid cores (for example Tensor's A76/A78 tier) remain usable once capacities are
+    /// mirrored to the guest. A host made only of efficiency cores keeps all of them.
+    fn performance_cores(&self) -> Vec<CpuCore> {
+        let identified = self.cores.iter().any(|core| core.kind != CoreKind::Unknown);
+        let selected: Vec<CpuCore> = if identified {
+            self.cores
+                .iter()
+                .copied()
+                .filter(|core| core.kind != CoreKind::Efficiency)
+                .collect()
+        } else {
+            let fastest = self.fastest_capacity();
+            let slowest = self
+                .cores
+                .iter()
+                .map(|core| core.capacity)
+                .min()
+                .unwrap_or(0);
+            let exclude_slowest =
+                slowest != fastest && slowest * 100 < fastest * EFFICIENCY_TIER_PERCENT;
+            self.cores
+                .iter()
+                .copied()
+                .filter(|core| !(exclude_slowest && core.capacity == slowest))
+                .collect()
+        };
+        if selected.is_empty() {
+            self.cores.clone()
+        } else {
+            selected
+        }
+    }
+
     pub fn performance_cpus(&self) -> Vec<usize> {
-        let fastest = self.fastest_capacity();
-        self.cores
+        self.performance_cores()
             .iter()
-            .filter(|core| core.capacity * 100 >= fastest * PERFORMANCE_CAPACITY_PERCENT)
             .map(|core| core.index)
             .collect()
     }
@@ -205,12 +292,7 @@ impl HostResources {
             return Err(PlacementError::NoVcpus);
         }
         let fastest = self.fastest_capacity().max(1);
-        let mut candidates: Vec<CpuCore> = self
-            .cores
-            .iter()
-            .copied()
-            .filter(|core| core.capacity * 100 >= fastest * PERFORMANCE_CAPACITY_PERCENT)
-            .collect();
+        let mut candidates = self.performance_cores();
         let available = u16::try_from(candidates.len()).unwrap_or(u16::MAX);
         if vcpus > available {
             return Err(PlacementError::ExceedsPerformanceCores {

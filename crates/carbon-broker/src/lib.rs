@@ -7,8 +7,8 @@ mod android_host_runtime;
 mod avf;
 mod backend;
 mod control_plane;
+mod direct_crosvm;
 mod graphics;
-mod gunyah;
 mod host_resources;
 mod host_runtime;
 mod performance;
@@ -36,10 +36,10 @@ pub use backend::{
     ProgramInvocation,
 };
 pub use control_plane::{BrokerControlError, BrokerControlPlane, GraphicalStartIntent};
+pub use direct_crosvm::{DirectCrosvmBackend, DirectLaunchPlan, DirectSessionFds};
 pub use graphics::{GraphicsHandleLeaseError, GraphicsHandleLeaseTable, GraphicsHandleToken};
-pub use gunyah::{GunyahCrosvmBackend, GunyahLaunchPlan, GunyahSessionFds};
 pub use host_resources::{
-    CAPACITY_SCALE, CpuCore, HostResources, PlacementError, VcpuPin, VcpuPlacement,
+    CAPACITY_SCALE, CoreKind, CpuCore, HostResources, PlacementError, VcpuPin, VcpuPlacement,
 };
 pub use host_runtime::{
     HostRuntimeDisk, HostRuntimeGraphicalVmRequest, HostRuntimePublisher, HostRuntimeRequestError,

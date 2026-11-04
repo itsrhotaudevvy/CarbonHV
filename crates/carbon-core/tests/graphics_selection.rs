@@ -268,3 +268,83 @@ fn adreno_profile_does_not_select_on_mali_identity() {
         RendererSelection::Unavailable,
     );
 }
+
+fn host_with_renderer(renderer: &str) -> GpuHostCapabilities {
+    let mut host = mali_host(false);
+    host.identity.renderer = renderer.into();
+    host
+}
+
+#[test]
+fn every_target_soc_gpu_maps_to_exactly_one_builtin_profile() {
+    // GLES renderer strings as reported by each SoC family's vendor driver.
+    let cases = [
+        ("Mali-G710", "gfxstream-vulkan-mali"), // Tensor G2
+        ("Mali-G715", "gfxstream-vulkan-mali"), // Tensor G3/G4
+        ("PowerVR D-Series DXT-48-1536", "gfxstream-vulkan-powervr"), // Tensor G5
+        ("Samsung Xclipse 940", "gfxstream-vulkan-xclipse"), // Exynos 2400
+        ("Mali-G68 MC4", "gfxstream-vulkan-mali"), // Exynos 1380
+        ("Mali-G720-Immortalis MC12", "gfxstream-vulkan-mali"), // Dimensity 9300
+        ("Immortalis-G925", "gfxstream-vulkan-immortalis"), // Dimensity 9400
+        ("Adreno (TM) 710", "gfxstream-vulkan-adreno"), // Snapdragon 6 Gen 3
+    ];
+    let profiles = GpuRendererProfile::builtin_profiles();
+    for (renderer, expected) in cases {
+        let host = host_with_renderer(renderer);
+        let matching: Vec<_> = profiles
+            .iter()
+            .filter(|profile| {
+                matches!(
+                    select_renderer(
+                        &host,
+                        std::slice::from_ref(*profile),
+                        RendererSelectionMode::DeveloperExperimental,
+                        None,
+                    ),
+                    RendererSelection::Experimental(_)
+                )
+            })
+            .map(|profile| profile.id.as_str())
+            .collect();
+        assert_eq!(matching, vec![expected], "{renderer}");
+    }
+}
+
+#[test]
+fn unknown_gpus_and_release_mode_never_select_an_unqualified_profile() {
+    let profiles = GpuRendererProfile::builtin_profiles();
+    assert_eq!(
+        select_renderer(
+            &host_with_renderer("llvmpipe (LLVM 19.1.0, 128 bits)"),
+            &profiles,
+            RendererSelectionMode::DeveloperExperimental,
+            None,
+        ),
+        RendererSelection::Unavailable
+    );
+    assert_eq!(
+        select_renderer(
+            &host_with_renderer("PowerVR D-Series DXT-48-1536"),
+            &profiles,
+            RendererSelectionMode::Release,
+            None,
+        ),
+        RendererSelection::Unavailable
+    );
+}
+
+#[test]
+fn every_builtin_profile_shares_the_cvd1_transport_contract() {
+    let mali = GpuRendererProfile::gfxstream_vulkan_mali();
+    for profile in GpuRendererProfile::builtin_profiles() {
+        assert_eq!(profile.required, mali.required, "{}", profile.id);
+        assert_eq!(profile.buffer_transport, mali.buffer_transport);
+        assert_eq!(profile.synchronization, mali.synchronization);
+        assert_eq!(profile.sandbox_profile, mali.sandbox_profile);
+        assert!(
+            profile.quirks.is_empty(),
+            "{} carries unproven quirks",
+            profile.id
+        );
+    }
+}

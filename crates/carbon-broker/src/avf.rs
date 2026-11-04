@@ -132,7 +132,7 @@ pub struct AvfLaunchPlan {
 pub struct AvfBackend {
     vm_tool: PathBuf,
     kvm_device: PathBuf,
-    gunyah_device: Option<PathBuf>,
+    vendor_devices: Vec<(HypervisorKind, PathBuf)>,
     profile: PerformanceProfile,
 }
 
@@ -141,7 +141,7 @@ impl AvfBackend {
         Self {
             vm_tool,
             kvm_device,
-            gunyah_device: None,
+            vendor_devices: Vec::new(),
             profile: PerformanceProfile::default(),
         }
     }
@@ -151,11 +151,19 @@ impl AvfBackend {
         self
     }
 
-    /// Lets the probe recognise Qualcomm Gunyah hosts (for example `/dev/gunyah`) so they are
-    /// reported as such instead of as a generic missing-KVM failure.
-    pub fn with_gunyah_device(mut self, gunyah_device: PathBuf) -> Self {
-        self.gunyah_device = Some(gunyah_device);
+    /// Lets the probe recognise a vendor hypervisor device (Gunyah, GenieZone, Halla) so such
+    /// hosts are reported as such instead of as a generic missing-KVM failure.
+    pub fn with_vendor_hypervisor_device(mut self, kind: HypervisorKind, device: PathBuf) -> Self {
+        if kind != HypervisorKind::Kvm && kind != HypervisorKind::None {
+            self.vendor_devices
+                .retain(|(existing, _)| *existing != kind);
+            self.vendor_devices.push((kind, device));
+        }
         self
+    }
+
+    pub fn with_gunyah_device(self, device: PathBuf) -> Self {
+        self.with_vendor_hypervisor_device(HypervisorKind::Gunyah, device)
     }
 
     /// Probe without hypervisor system properties (non-Android hosts and tests).
@@ -163,40 +171,40 @@ impl AvfBackend {
         self.probe_with_properties(&HypervisorProperties::default())
     }
 
-    /// Classifies the host. A Gunyah host is ready for AVF only when the controlled host build
+    /// Classifies the host. A vendor-hypervisor host is ready for AVF only when its build
     /// declares non-protected VM support (`ro.boot.hypervisor.vm.supported=1`); otherwise
     /// virtualizationservice refuses every VM, as observed on stock Snapdragon firmware.
     pub fn probe_with_properties(&self, properties: &HypervisorProperties) -> HostProbe {
         let vm_tool_present = self.vm_tool.is_file();
         let kvm_present = self.kvm_device.exists();
-        let gunyah_present = self
-            .gunyah_device
-            .as_ref()
-            .is_some_and(|device| device.exists());
-        // crosvm's default-hypervisor probe prefers /dev/kvm, then /dev/gunyah.
+        // Mirror crosvm's default-hypervisor probe: /dev/kvm, then gzvm, halla, gunyah.
         let hypervisor = if kvm_present {
             HypervisorKind::Kvm
-        } else if gunyah_present {
-            HypervisorKind::Gunyah
         } else {
-            HypervisorKind::None
+            HypervisorKind::VENDOR_PROBE_ORDER
+                .into_iter()
+                .find(|kind| {
+                    self.vendor_devices
+                        .iter()
+                        .any(|(candidate, device)| candidate == kind && device.exists())
+                })
+                .unwrap_or(HypervisorKind::None)
         };
         let class = match hypervisor {
             HypervisorKind::Kvm if vm_tool_present => HostVirtualizationClass::DevelopmentReady,
-            HypervisorKind::Gunyah
+            HypervisorKind::Kvm | HypervisorKind::None => HostVirtualizationClass::Unavailable,
+            vendor
                 if vm_tool_present
                     && properties.vm_supported == Some(true)
-                    && properties.declares_gunyah() =>
+                    && properties.consistent_with(vendor) =>
             {
-                HostVirtualizationClass::GunyahAvfReady
+                HostVirtualizationClass::VendorHypervisorAvfReady
             }
-            HypervisorKind::Gunyah => HostVirtualizationClass::GunyahWithoutBackend,
-            _ => HostVirtualizationClass::Unavailable,
+            _ => HostVirtualizationClass::VendorHypervisorWithoutAvf,
         };
         HostProbe {
             vm_tool_present,
             kvm_present,
-            gunyah_present,
             hypervisor,
             class,
         }

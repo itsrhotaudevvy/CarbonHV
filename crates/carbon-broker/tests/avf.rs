@@ -211,9 +211,12 @@ fn gunyah_host_without_kvm_is_reported_distinctly_and_never_ready() {
         AvfBackend::new(root.join("vm"), root.join("kvm")).with_gunyah_device(root.join("gunyah"));
 
     let probe = backend.probe();
-    assert!(probe.gunyah_present);
+    assert_eq!(probe.hypervisor, HypervisorKind::Gunyah);
     assert!(!probe.kvm_present);
-    assert_eq!(probe.class, HostVirtualizationClass::GunyahWithoutBackend);
+    assert_eq!(
+        probe.class,
+        HostVirtualizationClass::VendorHypervisorWithoutAvf
+    );
 }
 
 #[test]
@@ -232,7 +235,7 @@ fn kvm_takes_precedence_over_gunyah_and_absent_gunyah_stays_unavailable() {
     let neither = AvfBackend::new(root.join("vm"), root.join("nokvm"))
         .with_gunyah_device(root.join("nogunyah"));
     let probe = neither.probe();
-    assert!(!probe.gunyah_present);
+    assert_eq!(probe.hypervisor, HypervisorKind::None);
     assert_eq!(probe.class, HostVirtualizationClass::Unavailable);
 }
 
@@ -252,7 +255,10 @@ fn stock_snapdragon_properties_keep_gunyah_without_backend() {
         version: None,
     });
     assert_eq!(probe.hypervisor, HypervisorKind::Gunyah);
-    assert_eq!(probe.class, HostVirtualizationClass::GunyahWithoutBackend);
+    assert_eq!(
+        probe.class,
+        HostVirtualizationClass::VendorHypervisorWithoutAvf
+    );
 }
 
 #[test]
@@ -263,7 +269,10 @@ fn controlled_gunyah_build_declaring_vm_support_is_avf_ready() {
         version: Some("gunyah-v2".into()),
     });
     assert_eq!(probe.hypervisor, HypervisorKind::Gunyah);
-    assert_eq!(probe.class, HostVirtualizationClass::GunyahAvfReady);
+    assert_eq!(
+        probe.class,
+        HostVirtualizationClass::VendorHypervisorAvfReady
+    );
 }
 
 #[test]
@@ -272,7 +281,10 @@ fn gunyah_readiness_requires_an_explicit_yes_and_a_consistent_hypervisor_name() 
         vm_supported: None,
         ..Default::default()
     });
-    assert_eq!(unknown.class, HostVirtualizationClass::GunyahWithoutBackend);
+    assert_eq!(
+        unknown.class,
+        HostVirtualizationClass::VendorHypervisorWithoutAvf
+    );
 
     let mismatched = gunyah_host("gunyah-mismatch").probe_with_properties(&HypervisorProperties {
         vm_supported: Some(true),
@@ -281,7 +293,7 @@ fn gunyah_readiness_requires_an_explicit_yes_and_a_consistent_hypervisor_name() 
     });
     assert_eq!(
         mismatched.class,
-        HostVirtualizationClass::GunyahWithoutBackend
+        HostVirtualizationClass::VendorHypervisorWithoutAvf
     );
 }
 
@@ -313,4 +325,75 @@ fn graphical_platform_plan_carries_near_native_avf_tunables() {
             balloon: true,
         }
     );
+}
+
+fn vendor_host(name: &str, devices: &[(HypervisorKind, &str)]) -> AvfBackend {
+    let root = temp_root(name);
+    fs::write(root.join("vm"), b"tool").unwrap();
+    let mut backend = AvfBackend::new(root.join("vm"), root.join("kvm"));
+    for (kind, file) in devices {
+        fs::write(root.join(file), b"device").unwrap();
+        backend = backend.with_vendor_hypervisor_device(*kind, root.join(file));
+    }
+    backend
+}
+
+#[test]
+fn mediatek_geniezone_and_exynos_halla_hosts_are_classified_like_gunyah() {
+    let declared = HypervisorProperties {
+        vm_supported: Some(true),
+        ..Default::default()
+    };
+    for (kind, file) in [
+        (HypervisorKind::GenieZone, "gzvm"),
+        (HypervisorKind::Halla, "halla"),
+    ] {
+        let backend = vendor_host(&format!("vendor-{file}"), &[(kind, file)]);
+        let stock = backend.probe();
+        assert_eq!(stock.hypervisor, kind);
+        assert_eq!(
+            stock.class,
+            HostVirtualizationClass::VendorHypervisorWithoutAvf
+        );
+        assert_eq!(
+            backend.probe_with_properties(&declared).class,
+            HostVirtualizationClass::VendorHypervisorAvfReady
+        );
+    }
+}
+
+#[test]
+fn vendor_hypervisors_follow_crosvm_default_probe_order() {
+    // Registered in reverse order on purpose: crosvm tries gzvm, then halla, then gunyah.
+    let backend = vendor_host(
+        "vendor-order",
+        &[
+            (HypervisorKind::Gunyah, "gunyah"),
+            (HypervisorKind::Halla, "halla"),
+            (HypervisorKind::GenieZone, "gzvm"),
+        ],
+    );
+    assert_eq!(backend.probe().hypervisor, HypervisorKind::GenieZone);
+}
+
+#[test]
+fn version_property_naming_another_hypervisor_blocks_readiness() {
+    let props = |version: &str| HypervisorProperties {
+        vm_supported: Some(true),
+        protected_vm_supported: None,
+        version: Some(version.into()),
+    };
+    assert!(props("gunyah-v2").consistent_with(HypervisorKind::Gunyah));
+    assert!(props("geniezone 3.1").consistent_with(HypervisorKind::GenieZone));
+    assert!(props("vendor-hv-1").consistent_with(HypervisorKind::Halla));
+    assert!(!props("kvm.arm-protected").consistent_with(HypervisorKind::Halla));
+    assert!(!props("gunyah").consistent_with(HypervisorKind::GenieZone));
+}
+
+#[test]
+fn only_halla_needs_a_vendor_built_crosvm() {
+    assert!(HypervisorKind::Kvm.in_aosp_apex_crosvm());
+    assert!(HypervisorKind::GenieZone.in_aosp_apex_crosvm());
+    assert!(HypervisorKind::Gunyah.in_aosp_apex_crosvm());
+    assert!(!HypervisorKind::Halla.in_aosp_apex_crosvm());
 }
