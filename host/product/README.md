@@ -24,3 +24,15 @@ host/product/prepare-controlled-host.sh \
 If the APK is signed elsewhere, pass `--ui-signing-sha256 <64-hex-digest>` instead. The generated product block contains only the certificate digest; it never copies or records the signing key.
 
 After building the product, verify on-device that `dev.carbonhv.broker` is owned by `carbonhvd`, `dev.carbonhv.host.runtime` is owned by `dev.carbonhv.host`, both processes have their dedicated SELinux domains, and `/data/misc/carbonhv` has the `carbonhv_data_file` label before attempting a guest boot.
+
+## Snapdragon (Gunyah) controlled hosts
+
+Qualcomm phones run Gunyah, not KVM. Stock firmware does not declare AVF VM support, so `vm info` reports `VMs are not supported`. A controlled Snapdragon host build needs three changes beyond `carbonhv.mk`. None of them can be made from this repository alone, and none may be made on a stock user build.
+
+1. **Declare non-protected VM support** in the boot configuration that produces `ro.boot.*` (for example `BOARD_BOOTCONFIG += androidboot.hypervisor.vm.supported=1` in the rebuilt `vendor_boot`). Leave `protected_vm.supported` untouched. CarbonHV GUI sessions never request protected or QCOM trusted VMs.
+2. **Let the AVF crosvm domain open `/dev/gunyah`** under the label the vendor policy assigns. Read the label with `qualification/carbon-qualify.sh --adb <serial>` (field `gunyah_selinux_label`). Add only that one device rule to the product's vendor policy; do not relabel the node.
+3. **Use a `com.android.virt` APEX whose crosvm is built with the `gunyah` feature.** AOSP virtmgr already passes `--hypervisor gunyah[...]` for trusted VMs, so arm64 builds normally carry it. With no `/dev/kvm`, crosvm's default-hypervisor probe then selects `/dev/gunyah` for the unprotected VM.
+
+After flashing, the probe must report `hypervisor=gunyah`, `hypervisor_vm_supported=1`, and `avf_gunyah_path=declared`, and `carbonhvd` must log `class=GunyahAvfReady`. The result is still `EXPERIMENTAL` until a starter guest boots, renders through gfxstream into the CarbonHV surface, and passes sustained qualification.
+
+The second tier, where CarbonHV launches crosvm itself to pin vCPUs (`GunyahCrosvmBackend`), additionally needs a dedicated crosvm SELinux domain that `carbonhvd` may transition into. That spawn and supervision path is a later slice and is not part of this fragment yet.

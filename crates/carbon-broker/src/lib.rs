@@ -8,8 +8,10 @@ mod avf;
 mod backend;
 mod control_plane;
 mod graphics;
+mod gunyah;
 mod host_resources;
 mod host_runtime;
+mod performance;
 mod runtime_orchestration;
 mod starter_bundles;
 
@@ -27,14 +29,23 @@ pub use android_host_runtime::{
 };
 pub use avf::{
     AvfBackend, AvfDisplayConfig, AvfGpuConfig, AvfGraphicsConfig, AvfInputConfig, AvfLaunchPlan,
-    AvfPlatformVmPlan,
+    AvfPerformanceConfig, AvfPlatformVmPlan,
 };
-pub use backend::{BackendError, HostProbe, HostVirtualizationClass, ProgramInvocation};
+pub use backend::{
+    BackendError, HostProbe, HostVirtualizationClass, HypervisorKind, HypervisorProperties,
+    ProgramInvocation,
+};
 pub use control_plane::{BrokerControlError, BrokerControlPlane, GraphicalStartIntent};
 pub use graphics::{GraphicsHandleLeaseError, GraphicsHandleLeaseTable, GraphicsHandleToken};
-pub use host_resources::{CpuCore, HostResources};
+pub use gunyah::{GunyahCrosvmBackend, GunyahLaunchPlan, GunyahSessionFds};
+pub use host_resources::{
+    CAPACITY_SCALE, CpuCore, HostResources, PlacementError, VcpuPin, VcpuPlacement,
+};
 pub use host_runtime::{
     HostRuntimeDisk, HostRuntimeGraphicalVmRequest, HostRuntimePublisher, HostRuntimeRequestError,
+};
+pub use performance::{
+    CpuControl, CpuFrequencyControl, CpuPlan, GuestPerformancePlan, PerformanceProfile,
 };
 pub use runtime_orchestration::{GraphicalRuntimeCoordinator, GraphicalRuntimeError};
 pub use starter_bundles::{StarterBundleError, resolve_starter_bundle_request};

@@ -22,13 +22,17 @@ Implemented and exercised in source:
 - GrapheneOS-derived and Ubuntu Touch CVD1 source/build recipes;
 - vendor-neutral CVD1 GPU capability/renderer contracts, a Mali-first native presentation path, and deterministic GPU qualification fixtures;
 - starter-guest graphics requirements for Android virtual gralloc/HWC/EGL/Vulkan and Ubuntu Touch Mesa/Mir on the same `virtio-gpu` ABI;
+- a near-native performance plan: vCPUs pinned 1:1 to performance cores, mirrored capacities and frequency domains, guest-driven DVFS, THP, and free-page reporting. It is realized as AVF raw-config fields and as exact crosvm flags;
+- a Snapdragon/Gunyah path: AVF-on-Gunyah readiness classification and an exact `crosvm --hypervisor gunyah` launch plan (ADR-013);
+- `carbonctl guest kernel-config`, with shared and per-family CVD1 kernel fragments;
 - a physical-host ADB probe plus fail-closed minimal and sustained GPU qualification entrypoints;
 - one top-level verifier covering Rust, manifests, guest contracts, shell scripts, Android tests, and the debug APK.
 
 Still hardware/integration gated:
 
 - production Android platform/Binder registration for `carbonhvd` and final SELinux policy on a selected host branch;
-- a minimal ARM64 guest actually booted through CarbonHV's AVF path;
+- a minimal ARM64 guest actually booted through CarbonHV's AVF path, on KVM or on a controlled Gunyah host;
+- `carbonhvd` spawning and supervising the tier-2 Gunyah crosvm process;
 - accelerated guest GPU rendering and guest-produced buffer presentation into the Android surface;
 - real GrapheneOS-derived and Ubuntu Touch/Lomiri guest images built and booted;
 - calibrated Pixel 7a GPU release thresholds derived from real 30-minute Android-derived and Ubuntu Touch runs;

@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use carbon_broker::{
     AvfBackend, AvfGraphicsConfig, DisplaySessionIdentity, HostRuntimeGraphicalVmRequest,
-    HostRuntimeRequestError, ValidatedVmDisk, ValidatedVmSpec,
+    HostRuntimeRequestError, PerformanceProfile, ValidatedVmDisk, ValidatedVmSpec,
 };
 use carbon_core::Generation;
 
@@ -80,6 +80,33 @@ fn runtime_publication_preserves_broker_identity_and_platform_plan_exactly() {
     assert_eq!(request.height_pixels, 2400);
     assert_eq!(request.density_dpi, 420);
     assert_eq!(request.refresh_rate, 90);
+    // Near-native default on AVF: no pinning is expressible, so boost vCPU threads instead.
+    assert!(request.huge_pages);
+    assert!(request.boost_uclamp);
+    assert!(request.balloon);
+}
+
+#[test]
+fn efficient_profile_reaches_the_runtime_request_without_boost() {
+    let spec = spec();
+    let plan = AvfBackend::new(
+        PathBuf::from("/apex/com.android.virt/bin/vm"),
+        PathBuf::from("/dev/kvm"),
+    )
+    .with_performance_profile(PerformanceProfile::Efficient)
+    .build_graphics_platform_plan(
+        &spec,
+        AvfGraphicsConfig::gfxstream_vulkan(1080, 2400, 420, 90).unwrap(),
+    )
+    .unwrap();
+    let identity = DisplaySessionIdentity {
+        instance_id: spec.instance_id.clone(),
+        generation: spec.generation,
+    };
+    let request = HostRuntimeGraphicalVmRequest::try_from_plan(&identity, &plan).unwrap();
+    assert!(!request.boost_uclamp);
+    assert!(request.huge_pages);
+    assert!(request.balloon);
 }
 
 #[test]

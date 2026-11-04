@@ -17,6 +17,13 @@ cargo run -q -p carbon-cli -- bundle verify bundles/ubuntu-touch/bundle.toml
 echo "[4/9] Guest contracts"
 cargo run -q -p carbon-cli -- guest verify guest/android/device/cvd1.toml
 cargo run -q -p carbon-cli -- guest verify guest/ubuntu-touch/device/cvd1.toml
+kernel_base="$(mktemp)"
+trap 'rm -f "$kernel_base"' EXIT
+printf 'CONFIG_ARM64=y\n' > "$kernel_base"
+cargo run -q -p carbon-cli -- guest kernel-config android "$kernel_base" \
+  guest/common/kernel/cvd1-near-native.fragment guest/android/device/kernel.fragment
+cargo run -q -p carbon-cli -- guest kernel-config ubuntu-touch "$kernel_base" \
+  guest/common/kernel/cvd1-near-native.fragment guest/ubuntu-touch/device/kernel.fragment
 
 echo "[5/9] Shell contracts"
 bash -n guest/android/build.sh

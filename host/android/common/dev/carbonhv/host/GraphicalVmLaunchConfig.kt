@@ -7,6 +7,16 @@ data class GraphicalVmDiskConfig(
     val writable: Boolean,
 )
 
+/**
+ * AVF raw-config performance fields chosen by the broker's performance plan. They change host
+ * scheduling and memory backing only; none of them widens what the guest can reach.
+ */
+data class GraphicalVmPerformanceConfig(
+    val hugePages: Boolean,
+    val boostUclamp: Boolean,
+    val balloon: Boolean,
+)
+
 data class GraphicalVmLaunchConfig(
     val kernelPath: String,
     val initrdPath: String,
@@ -18,6 +28,7 @@ data class GraphicalVmLaunchConfig(
     val heightPixels: Int,
     val densityDpi: Int,
     val refreshRate: Int,
+    val performance: GraphicalVmPerformanceConfig,
 ) {
     fun validationError(managedRoot: String): GraphicalVmLaunchValidationError? {
         if (!isManagedPath(kernelPath, managedRoot) ||

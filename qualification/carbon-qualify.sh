@@ -145,11 +145,22 @@ emit_adb_probe() {
   fi
 
   local gunyah_status qvirt_status avf_vm_info cpu_capacities vkjson hypervisor
+  local hv_vm_supported hv_protected_vm_supported hv_version gunyah_label cpu_freq_domains thp_mode
+  local avf_gunyah_path
   gunyah_status="$(adb -s "$target" shell 'if [ -e /dev/gunyah ]; then echo yes; else echo no; fi' 2>/dev/null | tr -d '\r')"
   qvirt_status="$(adb -s "$target" shell 'service check vendor.qti.qvirt.IVirtualizationService/default 2>/dev/null' 2>/dev/null | tr -d '\r')"
   avf_vm_info="$(adb -s "$target" shell 'timeout 5 /apex/com.android.virt/bin/vm info </dev/null 2>&1 | head -1' 2>/dev/null | tr -d '\r' | tr '\n' ' ')"
   cpu_capacities="$(adb -s "$target" shell 'for d in /sys/devices/system/cpu/cpu[0-9]*; do cat $d/cpu_capacity 2>/dev/null; done' 2>/dev/null | tr -d '\r' | paste -sd, -)"
   vkjson="$(adb -s "$target" shell 'cmd gpu vkjson 2>/dev/null' 2>/dev/null | tr -d '\r')"
+  # AVF refuses every VM unless the boot config declares support; Gunyah hosts need this for the
+  # AVF path, and the /dev/gunyah label tells the controlled product which crosvm rule to add.
+  hv_vm_supported="$(adb -s "$target" shell getprop ro.boot.hypervisor.vm.supported 2>/dev/null | tr -d '\r')"
+  hv_protected_vm_supported="$(adb -s "$target" shell getprop ro.boot.hypervisor.protected_vm.supported 2>/dev/null | tr -d '\r')"
+  hv_version="$(adb -s "$target" shell getprop ro.boot.hypervisor.version 2>/dev/null | tr -d '\r')"
+  gunyah_label="$(adb -s "$target" shell 'ls -Z /dev/gunyah 2>/dev/null' 2>/dev/null | tr -d '\r' | awk '{for (i = 1; i <= NF; i++) if ($i ~ /^u:object_r:/) { print $i; exit }}')"
+  # Near-native placement mirrors host cpufreq policies into the guest; record them exactly.
+  cpu_freq_domains="$(adb -s "$target" shell 'for p in /sys/devices/system/cpu/cpufreq/policy[0-9]*; do cat $p/related_cpus 2>/dev/null; done' 2>/dev/null | tr -d '\r' | sed 's/[[:space:]]*$//; s/[[:space:]][[:space:]]*/,/g' | paste -sd';' -)"
+  thp_mode="$(adb -s "$target" shell 'cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null' 2>/dev/null | tr -d '\r' | sed -n 's/.*\[\([a-z]*\)\].*/\1/p')"
 
   # Adreno's SurfaceFlinger dump has no "Name:" line; fall back to the GLES identity, then Vulkan.
   if [[ -z "$gpu_renderer" ]]; then
@@ -173,6 +184,21 @@ emit_adb_probe() {
   [[ "$qvirt_status" == *": found"* ]] && qvirt_status=yes || qvirt_status=no
   [[ -n "$cpu_capacities" ]] || cpu_capacities=unknown
   [[ -n "$avf_vm_info" ]] || avf_vm_info=unknown
+  [[ -n "$hv_vm_supported" ]] || hv_vm_supported=unset
+  [[ -n "$hv_protected_vm_supported" ]] || hv_protected_vm_supported=unset
+  [[ -n "$hv_version" ]] || hv_version=unset
+  [[ -n "$gunyah_label" ]] || gunyah_label=unknown
+  [[ -n "$cpu_freq_domains" ]] || cpu_freq_domains=unknown
+  [[ -n "$thp_mode" ]] || thp_mode=unknown
+  if [[ "$hypervisor" != gunyah ]]; then
+    avf_gunyah_path=not-applicable
+  elif [[ "$vm_status" != yes ]]; then
+    avf_gunyah_path=blocked:avf-vm-tool-missing
+  elif [[ "$hv_vm_supported" != 1 && "$hv_vm_supported" != true ]]; then
+    avf_gunyah_path="blocked:ro.boot.hypervisor.vm.supported=$hv_vm_supported"
+  else
+    avf_gunyah_path=declared
+  fi
 
   [[ -n "$soc" ]] || soc=unknown
   [[ -n "$egl_provider" ]] || egl_provider=unknown
@@ -192,6 +218,13 @@ emit_adb_probe() {
   printf 'vendor_virtualization_service=%s\n' "$qvirt_status"
   printf 'avf_vm_info=%s\n' "$avf_vm_info"
   printf 'cpu_capacities=%s\n' "$cpu_capacities"
+  printf 'cpu_freq_domains=%s\n' "$cpu_freq_domains"
+  printf 'thp_mode=%s\n' "$thp_mode"
+  printf 'hypervisor_vm_supported=%s\n' "$hv_vm_supported"
+  printf 'hypervisor_protected_vm_supported=%s\n' "$hv_protected_vm_supported"
+  printf 'hypervisor_version=%s\n' "$hv_version"
+  printf 'gunyah_selinux_label=%s\n' "$gunyah_label"
+  printf 'avf_gunyah_path=%s\n' "$avf_gunyah_path"
   printf 'soc=%s\n' "$soc"
   printf 'gpu_renderer=%s\n' "$gpu_renderer"
   printf 'egl_provider=%s\n' "$egl_provider"
@@ -206,9 +239,13 @@ emit_adb_probe() {
     printf 'qualification=UNSUPPORTED\nreason=host is not ARM64\n'
     exit 3
   fi
-  if [[ "$hypervisor" == gunyah && "$kvm_status" != "yes" ]]; then
-    printf 'qualification=UNSUPPORTED\nreason=Gunyah hypervisor present but AVF has no KVM; no qualified Gunyah backend\n'
+  if [[ "$hypervisor" == gunyah && "$avf_gunyah_path" != declared ]]; then
+    printf 'qualification=UNSUPPORTED\nreason=Gunyah hypervisor present but this build does not declare AVF VM support; a controlled host build must set androidboot.hypervisor.vm.supported=1 and grant crosvm %s\n' "$gunyah_label"
     exit 3
+  fi
+  if [[ "$hypervisor" == gunyah ]]; then
+    printf 'cpu=hardware-virtualized\ngraphics=unverified\nqualification=EXPERIMENTAL\nreason=Gunyah AVF path declared; guest boot, gfxstream presentation and sustained qualification still required\n'
+    exit 4
   fi
   if [[ "$vm_status" != "yes" || "$kvm_status" != "yes" ]]; then
     printf 'qualification=UNSUPPORTED\nreason=AVF or KVM unavailable\n'

@@ -1,9 +1,13 @@
 use std::path::{Component, PathBuf};
 
-use crate::{BackendError, HostProbe, HostVirtualizationClass, ProgramInvocation, ValidatedVmSpec};
+use crate::{
+    BackendError, CpuControl, CpuFrequencyControl, GuestPerformancePlan, HostProbe,
+    HostVirtualizationClass, HypervisorKind, HypervisorProperties, PerformanceProfile,
+    ProgramInvocation, ValidatedVmSpec,
+};
 
-const GFXSTREAM_CONTEXT_TYPES: [&str; 2] = ["gfxstream-vulkan", "gfxstream-composer"];
-const GFXSTREAM_RENDERER_FEATURES: &str = "VulkanDisableCoherentMemoryAndEmulate:enabled;VulkanAllocateHostVisibleAsUdmabuf:enabled;ExternalBlob:enabled";
+pub(crate) const GFXSTREAM_CONTEXT_TYPES: [&str; 2] = ["gfxstream-vulkan", "gfxstream-composer"];
+pub(crate) const GFXSTREAM_RENDERER_FEATURES: &str = "VulkanDisableCoherentMemoryAndEmulate:enabled;VulkanAllocateHostVisibleAsUdmabuf:enabled;ExternalBlob:enabled";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvfGraphicsConfig {
@@ -38,6 +42,22 @@ impl AvfGraphicsConfig {
             refresh_rate,
         })
     }
+
+    pub fn width_pixels(&self) -> u32 {
+        self.width_pixels
+    }
+
+    pub fn height_pixels(&self) -> u32 {
+        self.height_pixels
+    }
+
+    pub fn density_dpi(&self) -> u32 {
+        self.density_dpi
+    }
+
+    pub fn refresh_rate(&self) -> u32 {
+        self.refresh_rate
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -67,6 +87,25 @@ pub struct AvfInputConfig {
     pub mouse: bool,
 }
 
+/// The AVF `VirtualMachineRawConfig` performance fields CarbonHV controls. AVF cannot pin vCPUs,
+/// so near-native sessions use `boostUclamp` to keep vCPU threads on performance cores.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AvfPerformanceConfig {
+    pub huge_pages: bool,
+    pub boost_uclamp: bool,
+    pub balloon: bool,
+}
+
+impl AvfPerformanceConfig {
+    pub fn from_plan(plan: &GuestPerformancePlan) -> Self {
+        Self {
+            huge_pages: plan.hugepages,
+            boost_uclamp: plan.frequency == CpuFrequencyControl::BoostUclamp,
+            balloon: plan.balloon_page_reporting,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvfPlatformVmPlan {
     pub platform_version: &'static str,
@@ -79,6 +118,7 @@ pub struct AvfPlatformVmPlan {
     pub gpu: AvfGpuConfig,
     pub display: AvfDisplayConfig,
     pub input: AvfInputConfig,
+    pub performance: AvfPerformanceConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -93,6 +133,7 @@ pub struct AvfBackend {
     vm_tool: PathBuf,
     kvm_device: PathBuf,
     gunyah_device: Option<PathBuf>,
+    profile: PerformanceProfile,
 }
 
 impl AvfBackend {
@@ -101,7 +142,13 @@ impl AvfBackend {
             vm_tool,
             kvm_device,
             gunyah_device: None,
+            profile: PerformanceProfile::default(),
         }
+    }
+
+    pub fn with_performance_profile(mut self, profile: PerformanceProfile) -> Self {
+        self.profile = profile;
+        self
     }
 
     /// Lets the probe recognise Qualcomm Gunyah hosts (for example `/dev/gunyah`) so they are
@@ -111,24 +158,46 @@ impl AvfBackend {
         self
     }
 
+    /// Probe without hypervisor system properties (non-Android hosts and tests).
     pub fn probe(&self) -> HostProbe {
+        self.probe_with_properties(&HypervisorProperties::default())
+    }
+
+    /// Classifies the host. A Gunyah host is ready for AVF only when the controlled host build
+    /// declares non-protected VM support (`ro.boot.hypervisor.vm.supported=1`); otherwise
+    /// virtualizationservice refuses every VM, as observed on stock Snapdragon firmware.
+    pub fn probe_with_properties(&self, properties: &HypervisorProperties) -> HostProbe {
         let vm_tool_present = self.vm_tool.is_file();
         let kvm_present = self.kvm_device.exists();
         let gunyah_present = self
             .gunyah_device
             .as_ref()
             .is_some_and(|device| device.exists());
-        let class = if vm_tool_present && kvm_present {
-            HostVirtualizationClass::DevelopmentReady
-        } else if gunyah_present && !kvm_present {
-            HostVirtualizationClass::GunyahWithoutBackend
+        // crosvm's default-hypervisor probe prefers /dev/kvm, then /dev/gunyah.
+        let hypervisor = if kvm_present {
+            HypervisorKind::Kvm
+        } else if gunyah_present {
+            HypervisorKind::Gunyah
         } else {
-            HostVirtualizationClass::Unavailable
+            HypervisorKind::None
+        };
+        let class = match hypervisor {
+            HypervisorKind::Kvm if vm_tool_present => HostVirtualizationClass::DevelopmentReady,
+            HypervisorKind::Gunyah
+                if vm_tool_present
+                    && properties.vm_supported == Some(true)
+                    && properties.declares_gunyah() =>
+            {
+                HostVirtualizationClass::GunyahAvfReady
+            }
+            HypervisorKind::Gunyah => HostVirtualizationClass::GunyahWithoutBackend,
+            _ => HostVirtualizationClass::Unavailable,
         };
         HostProbe {
             vm_tool_present,
             kvm_present,
             gunyah_present,
+            hypervisor,
             class,
         }
     }
@@ -208,6 +277,10 @@ impl AvfBackend {
             kernel_params.push("gfxstream_enabled".into());
         }
 
+        let performance =
+            GuestPerformancePlan::build(self.profile, None, spec.vcpus, CpuControl::CountOnly)
+                .map_err(BackendError::Placement)?;
+
         Ok(AvfPlatformVmPlan {
             platform_version: "~1.0",
             kernel: spec.kernel.clone(),
@@ -237,6 +310,7 @@ impl AvfBackend {
                 keyboard: true,
                 mouse: true,
             },
+            performance: AvfPerformanceConfig::from_plan(&performance),
         })
     }
 }

@@ -752,9 +752,25 @@ Admission uses measured available memory and a device-specific reserve, not phys
 
 Observe Android thermal signals and measured frame behavior. Reduce guest presentation resolution or frame target through explicit policy before the host becomes unusable. Show an unobtrusive thermal status when the experience changes. Keep input queues short even under load.
 
-Avoid permanent high-frequency wake locks, unbounded polling, and fixed maximum CPU affinity. Stop unnecessary guest display work when not visible; retain background workloads only under the chosen runtime policy.
+Avoid permanent high-frequency wake locks, unbounded polling, and maximum-frequency clamps that thermal policy cannot release. Switching from the `NearNative` to the `Efficient` profile (§24.3) is that release: it drops vCPU pinning, guest DVFS forwarding, and uclamp boosting together. Stop unnecessary guest display work when not visible; retain background workloads only under the chosen runtime policy.
 
-### 24.3 Benchmark discipline
+### 24.3 Near-native execution plan
+
+CarbonHV aims for guests that behave like bare metal from their own point of view. The broker computes a `GuestPerformancePlan` from the measured host topology. It is implemented in `crates/carbon-broker/src/performance.rs` and verified against Snapdragon-shaped topologies.
+
+| Lever | Direct crosvm (Gunyah tier 2) | AVF raw config (KVM, Gunyah tier 1) | Guest requirement |
+| --- | --- | --- | --- |
+| vCPU placement | `--cpu-affinity` 1:1 onto the fastest performance cores; refuse instead of spilling onto efficiency cores | `cpuCount` only, because AVF cannot pin | none |
+| Scheduler topology | `--cpu-capacity` renormalized to 1024; `--cpus clusters=…,freq-domains=…` copied from host cpufreq policies | not expressible | `GENERIC_ARCH_TOPOLOGY` (arm64 default) |
+| Frequency | `--virt-cpufreq-upstream`: guest schedutil requests reach host DVFS | `boostUclamp` keeps vCPU threads on fast cores at full frequency | `CONFIG_CPUFREQ_VIRT` (`qemu,virtual-cpufreq`) |
+| Memory | `--hugepages` (THP advice), `--balloon-page-reporting` | `hugePages`, `balloon` | `CONFIG_TRANSPARENT_HUGEPAGE`, `CONFIG_VIRTIO_BALLOON`, `CONFIG_PAGE_REPORTING` |
+| I/O and graphics | unprotected VM, so no swiotlb bounce buffers; gfxstream `ExternalBlob` with udmabuf host-visible memory | same | virtio-gpu, `SYNC_FILE`, dma-buf |
+
+Guest DVFS and uclamp boosting are never combined. crosvm's `--boost-uclamp` sets `uclamp.min` to full capacity, which would override every guest frequency request. The `Efficient` profile drops both levers and leaves placement to the host for thermally limited sessions; the §24.2 thermal policy chooses between profiles. `carbonctl guest kernel-config` rejects a guest kernel that lacks the contract drivers (exit 3) or the near-native drivers (exit 5). The shared fragment is `guest/common/kernel/cvd1-near-native.fragment`.
+
+Gunyah guests on the pinned crosvm revision expose no SVE, MTE, or PMU. The GrapheneOS-derived guest's security-difference matrix must record the missing MTE, since hardened_malloc's memory tagging is unavailable there. These guest differences are not performance regressions to tune away.
+
+### 24.4 Benchmark discipline
 
 Record ambient conditions, battery/charging state, host brightness, refresh rate, guest resolution, warm-up, workload versions, and competing apps. Report p50/p95/p99 and failure counts where meaningful. Separate CPU virtualization overhead, guest rendering cost, presentation cost, and thermal throttling.
 
@@ -994,9 +1010,10 @@ These may be shared roles, but none can be replaced by UI-only development. Trea
 | ADR-008 | Host-managed OS updates initially | Gives one owner for system state and recovery | A guest's upstream model requires a reviewed alternative |
 | ADR-009 | One foreground VM; cold boot recovery baseline | Controls memory and snapshot complexity | Resource and checkpoint evidence supports expansion |
 | ADR-010 | Explicit, revocable sharing; private GrapheneOS profile | Limits integration attack surface | User research supports additional bounded defaults |
-| ADR-011 | Gunyah is not KVM: a Gunyah-only host is unsupported until a Gunyah backend adapter is qualified | A Snapdragon phone with `/dev/gunyah`, a vendor `qvirt` service and no `/dev/kvm` was observed (2026-09-30); AVF reports VMs unsupported there | Gunyah VM creation from a CarbonHV-controlled service is demonstrated on a physical host |
 | ADR-011 | Downstream guest identity and security feature accounting | Matches actual provenance and capabilities | Upstream officially adopts a target |
 | ADR-012 | No software/remote fallback hidden behind native claims | Keeps product behavior honest | Product scope explicitly changes |
+| ADR-013 | Gunyah is not KVM. On Snapdragon, first enable AVF itself on a controlled host build (non-protected VMs; crosvm falls back from absent `/dev/kvm` to `/dev/gunyah`). A CarbonHV-owned `crosvm --hypervisor gunyah` launch is the second tier, for per-vCPU pinning AVF cannot express. Never request a protected or QCOM trusted VM for the GUI session | Observed 2026-09-30: `/dev/gunyah`, vendor `qvirt`, no `/dev/kvm`, AVF reports VMs unsupported. In AOSP, virtmgr passes `--hypervisor gunyah[...]` only for protected QCOM trusted VMs. Pinned crosvm creates unprotected Gunyah VMs with shared memory and no swiotlb | A Gunyah guest boots and renders through either tier on a physical host, or the vendor hypervisor refuses non-protected VMs |
+| ADR-014 | Near-native performance comes from host-side placement, not guest-visible shortcuts: pin vCPUs 1:1 to performance cores, mirror capacities and frequency domains, forward guest DVFS, advise THP, report free pages. Never disable mitigations or weaken confinement for speed | The guest's own EAS/schedutil then behave as on hardware, and every lever is a host scheduling hint | Measured sustained runs show a lever costs more (thermal or memory) than it gains |
 
 ## 32. Open questions with owners and deadlines
 

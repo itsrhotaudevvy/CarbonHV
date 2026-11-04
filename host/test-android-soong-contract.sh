@@ -28,5 +28,8 @@ fi
 grep -Fq '"dev.carbonhv.broker-rust"' "$repo_root/Android.bp"
 grep -Fq '"dev.carbonhv.host.runtime-rust"' "$repo_root/Android.bp"
 grep -Fq '"libbinder_rs"' "$repo_root/Android.bp"
+# carbonhvd reads ro.boot.hypervisor.* to classify KVM vs Gunyah hosts.
+grep -Fq '"librustutils"' "$repo_root/Android.bp"
+grep -Fq 'rustutils::system_properties::read' "$repo_root/crates/carbon-broker/src/android_broker_service.rs"
 
 echo 'Android Soong contract: PASS'

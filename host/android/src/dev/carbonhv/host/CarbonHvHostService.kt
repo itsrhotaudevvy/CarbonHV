@@ -216,6 +216,11 @@ class CarbonHvHostService : Service() {
             heightPixels = heightPixels,
             densityDpi = densityDpi,
             refreshRate = refreshRate,
+            performance = GraphicalVmPerformanceConfig(
+                hugePages = hugePages,
+                boostUclamp = boostUclamp,
+                balloon = balloon,
+            ),
         )
 
     private fun checkAuthorized(admission: DisplaySessionAdmission) {

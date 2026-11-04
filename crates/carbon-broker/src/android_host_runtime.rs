@@ -105,6 +105,9 @@ impl HostRuntimePublisher for AndroidHostRuntimePublisher {
             heightPixels: request.height_pixels,
             densityDpi: request.density_dpi,
             refreshRate: request.refresh_rate,
+            hugePages: request.huge_pages,
+            boostUclamp: request.boost_uclamp,
+            balloon: request.balloon,
         };
         self.service
             .r#startGraphicalVm(&request)
