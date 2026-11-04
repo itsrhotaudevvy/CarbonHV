@@ -104,24 +104,17 @@ fun CarbonTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable
     )
 }
 
-/**
- * A neutral per-OS accent for the monogram badge. These are CarbonHV's own colors, not the guest
- * projects' logos or trademarks.
- */
-data class OsAccent(val container: Color, val content: Color, val monogram: String)
+/** A neutral per-OS accent for the OS tile; CarbonHV's own colors, not the projects' branding. */
+data class OsAccent(val container: Color, val content: Color)
 
 @Composable
 fun osAccent(bundleId: String, darkTheme: Boolean = isSystemInDarkTheme()): OsAccent {
-    val (light, dark, monogram) = when (bundleId) {
-        "grapheneos" -> Triple(Color(0xFFD7E3FF), Color(0xFF2D4677), "G")
-        "lineageos" -> Triple(Color(0xFFB9F0E6), Color(0xFF00504A), "L")
-        "pixelos" -> Triple(Color(0xFFE6DEFF), Color(0xFF4A3F7A), "P")
-        "ubuntu-touch" -> Triple(Color(0xFFFFDBCC), Color(0xFF7A3517), "U")
-        else -> Triple(Color(0xFFDAE5E4), Color(0xFF3F4948), "?")
+    val (light, dark) = when (bundleId) {
+        "grapheneos" -> Color(0xFFD7E3FF) to Color(0xFF2D4677)
+        "lineageos" -> Color(0xFFB9F0E6) to Color(0xFF00504A)
+        "pixelos" -> Color(0xFFE6DEFF) to Color(0xFF4A3F7A)
+        "ubuntu-touch" -> Color(0xFFFFDBCC) to Color(0xFF7A3517)
+        else -> Color(0xFFDAE5E4) to Color(0xFF3F4948)
     }
-    return if (darkTheme) {
-        OsAccent(container = dark, content = light, monogram = monogram)
-    } else {
-        OsAccent(container = light, content = dark, monogram = monogram)
-    }
+    return if (darkTheme) OsAccent(container = dark, content = light) else OsAccent(container = light, content = dark)
 }

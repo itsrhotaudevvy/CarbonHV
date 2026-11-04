@@ -10,7 +10,11 @@ qualification claim**. See [`docs/SUPPORT_MATRIX.md`](docs/SUPPORT_MATRIX.md).
 ### Added
 
 - Snapdragon controlled-host fragment (`host/product/snapdragon/`). It declares AVF VM support in the boot config, adds the one-line `vm_manager_device_type` vendor policy for the observed `vendor_gunyah_dev` label, and sets THP to `madvise`. A contract test checks it against the physical probe evidence.
-- Physical re-probe of the Redmi `kunzite` (Snapdragon 6 Gen 3) on 2026-11-04.
+- Physical re-probe of the Redmi `kunzite` (Snapdragon 6 Gen 3) on 2026-11-04. Its stock vendor policy already grants AVF's crosvm `/dev/gunyah` through `vm_manager_device_type`, so on this phone only the boot-config declaration is missing.
+- Leaner, icon-led manager UI:
+  - symbolic OS tiles (shield, Android, sparkle, touch) instead of letters;
+  - icon + value facts, shorter copy and icon actions;
+  - vendored Material vector icons (Apache-2.0), so the APK stays at about 31 MB.
 
 ### Fixed
 

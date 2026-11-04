@@ -35,6 +35,8 @@ Qualcomm phones run Gunyah, not KVM. Stock firmware does not declare AVF VM supp
 | `sepolicy/carbonhv_gunyah.te` | `typeattribute vendor_gunyah_dev vm_manager_device_type;`, AOSP's hook that lets AVF's crosvm (and only crosvm) open VM-manager devices | `/dev/gunyah` is `u:object_r:vendor_gunyah_dev:s0`; the shell is denied |
 | `carbonhv_gunyah.mk` + `init.carbonhv.gunyah.rc` | Sets THP to `madvise` at early boot, so the broker's huge-page advice can take effect | Stock runtime THP is `never` (compiled default `madvise`) |
 
+On the Redmi `kunzite`, the stock vendor policy **already** contains `(typeattributeset vm_manager_device_type (vendor_gunyah_dev))`, so `sepolicy/carbonhv_gunyah.te` is a no-op there. That leaves this phone needing only the bootconfig line (and, optionally, the THP setting) in a patched `vendor_boot`. Other Snapdragon devices still need the policy line.
+
 Include the board fragment from the device `BoardConfig.mk`, and inherit `carbonhv_gunyah.mk` next to `carbonhv.mk`. Leave `protected_vm.supported` to the vendor: CarbonHV GUI sessions never request protected or QCOM trusted VMs, and the contract test (`snapdragon/test-snapdragon-contract.sh`) rejects any fragment that does. The node is not relabeled and no other domain gains access. The kernel already ships Gunyah (`CONFIG_GUNYAH=y`, resource-manager modules loaded), and AOSP's APEX crosvm is built with the `gunyah` feature.
 
 After flashing, the probe must report `hypervisor=gunyah`, `hypervisor_vm_supported=1`, `thp_mode=madvise` and `avf_vendor_path=declared`, and `carbonhvd` must log `class=VendorHypervisorAvfReady`. The result stays `EXPERIMENTAL` until a starter guest boots, renders through gfxstream into the CarbonHV surface, and passes sustained qualification.
