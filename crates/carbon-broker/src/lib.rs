@@ -45,7 +45,7 @@ pub use host_runtime::{
     HostRuntimeDisk, HostRuntimeGraphicalVmRequest, HostRuntimePublisher, HostRuntimeRequestError,
 };
 pub use performance::{
-    CpuControl, CpuFrequencyControl, CpuPlan, GuestPerformancePlan, PerformanceProfile,
+    CpuControl, CpuFrequencyControl, CpuPlan, GuestPerformancePlan, PerformanceProfile, ThpMode,
 };
 pub use runtime_orchestration::{GraphicalRuntimeCoordinator, GraphicalRuntimeError};
 pub use starter_bundles::{StarterBundleError, resolve_starter_bundle_request};

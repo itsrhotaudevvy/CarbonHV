@@ -3,7 +3,7 @@ use std::path::{Component, PathBuf};
 use crate::{
     BackendError, CpuControl, CpuFrequencyControl, GuestPerformancePlan, HostProbe,
     HostVirtualizationClass, HypervisorKind, HypervisorProperties, PerformanceProfile,
-    ProgramInvocation, ValidatedVmSpec,
+    ProgramInvocation, ThpMode, ValidatedVmSpec,
 };
 
 pub(crate) const GFXSTREAM_CONTEXT_TYPES: [&str; 2] = ["gfxstream-vulkan", "gfxstream-composer"];
@@ -134,6 +134,7 @@ pub struct AvfBackend {
     kvm_device: PathBuf,
     vendor_devices: Vec<(HypervisorKind, PathBuf)>,
     profile: PerformanceProfile,
+    thp: ThpMode,
 }
 
 impl AvfBackend {
@@ -143,11 +144,17 @@ impl AvfBackend {
             kvm_device,
             vendor_devices: Vec::new(),
             profile: PerformanceProfile::default(),
+            thp: ThpMode::default(),
         }
     }
 
     pub fn with_performance_profile(mut self, profile: PerformanceProfile) -> Self {
         self.profile = profile;
+        self
+    }
+
+    pub fn with_host_thp(mut self, thp: ThpMode) -> Self {
+        self.thp = thp;
         self
     }
 
@@ -287,7 +294,8 @@ impl AvfBackend {
 
         let performance =
             GuestPerformancePlan::build(self.profile, None, spec.vcpus, CpuControl::CountOnly)
-                .map_err(BackendError::Placement)?;
+                .map_err(BackendError::Placement)?
+                .for_host_thp(self.thp);
 
         Ok(AvfPlatformVmPlan {
             platform_version: "~1.0",

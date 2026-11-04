@@ -1,0 +1,2 @@
+on early-boot
+    write /sys/kernel/mm/transparent_hugepage/enabled madvise

@@ -27,12 +27,16 @@ After building the product, verify on-device that `dev.carbonhv.broker` is owned
 
 ## Snapdragon (Gunyah) controlled hosts
 
-Qualcomm phones run Gunyah, not KVM. Stock firmware does not declare AVF VM support, so `vm info` reports `VMs are not supported`. A controlled Snapdragon host build needs three changes beyond `carbonhv.mk`. None of them can be made from this repository alone, and none may be made on a stock user build.
+Qualcomm phones run Gunyah, not KVM. Stock firmware does not declare AVF VM support, so `vm info` reports `VMs are not supported`. [`snapdragon/`](snapdragon) holds the complete delta a controlled Snapdragon build needs. Each item was checked against a physical Redmi `kunzite` (Snapdragon 6 Gen 3) on 2026-11-04:
 
-1. **Declare non-protected VM support** in the boot configuration that produces `ro.boot.*` (for example `BOARD_BOOTCONFIG += androidboot.hypervisor.vm.supported=1` in the rebuilt `vendor_boot`). Leave `protected_vm.supported` untouched. CarbonHV GUI sessions never request protected or QCOM trusted VMs.
-2. **Let the AVF crosvm domain open `/dev/gunyah`** under the label the vendor policy assigns. Read the label with `qualification/carbon-qualify.sh --adb <serial>` (field `vendor_hypervisor_selinux_label`). Add only that one device rule to the product's vendor policy; do not relabel the node.
-3. **Use a `com.android.virt` APEX whose crosvm is built with the `gunyah` feature.** AOSP virtmgr already passes `--hypervisor gunyah[...]` for trusted VMs, so arm64 builds normally carry it. With no `/dev/kvm`, crosvm's default-hypervisor probe then selects `/dev/gunyah` for the unprotected VM.
+| File | Effect | Evidence |
+| --- | --- | --- |
+| `BoardConfigCarbonHvGunyah.mk` | `BOARD_BOOTCONFIG += androidboot.hypervisor.vm.supported=1`, and adds the vendor policy dir | Stock: `ro.boot.hypervisor.*` unset |
+| `sepolicy/carbonhv_gunyah.te` | `typeattribute vendor_gunyah_dev vm_manager_device_type;`, AOSP's hook that lets AVF's crosvm (and only crosvm) open VM-manager devices | `/dev/gunyah` is `u:object_r:vendor_gunyah_dev:s0`; the shell is denied |
+| `carbonhv_gunyah.mk` + `init.carbonhv.gunyah.rc` | Sets THP to `madvise` at early boot, so the broker's huge-page advice can take effect | Stock runtime THP is `never` (compiled default `madvise`) |
 
-After flashing, the probe must report `hypervisor=gunyah`, `hypervisor_vm_supported=1`, and `avf_vendor_path=declared`, and `carbonhvd` must log `class=VendorHypervisorAvfReady`. The result is still `EXPERIMENTAL` until a starter guest boots, renders through gfxstream into the CarbonHV surface, and passes sustained qualification.
+Include the board fragment from the device `BoardConfig.mk`, and inherit `carbonhv_gunyah.mk` next to `carbonhv.mk`. Leave `protected_vm.supported` to the vendor: CarbonHV GUI sessions never request protected or QCOM trusted VMs, and the contract test (`snapdragon/test-snapdragon-contract.sh`) rejects any fragment that does. The node is not relabeled and no other domain gains access. The kernel already ships Gunyah (`CONFIG_GUNYAH=y`, resource-manager modules loaded), and AOSP's APEX crosvm is built with the `gunyah` feature.
+
+After flashing, the probe must report `hypervisor=gunyah`, `hypervisor_vm_supported=1`, `thp_mode=madvise` and `avf_vendor_path=declared`, and `carbonhvd` must log `class=VendorHypervisorAvfReady`. The result stays `EXPERIMENTAL` until a starter guest boots, renders through gfxstream into the CarbonHV surface, and passes sustained qualification.
 
 The second tier, where CarbonHV launches crosvm itself to pin vCPUs (`DirectCrosvmBackend`), additionally needs a dedicated crosvm SELinux domain that `carbonhvd` may transition into. That spawn and supervision path is a later slice and is not part of this fragment yet.

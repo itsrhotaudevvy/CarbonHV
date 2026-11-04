@@ -23,7 +23,7 @@ use std::path::{Component, Path, PathBuf};
 use crate::avf::{GFXSTREAM_CONTEXT_TYPES, GFXSTREAM_RENDERER_FEATURES};
 use crate::{
     AvfGraphicsConfig, BackendError, CpuControl, GuestPerformancePlan, HostResources,
-    HypervisorKind, PerformanceProfile, ProgramInvocation, ValidatedVmSpec,
+    HypervisorKind, PerformanceProfile, ProgramInvocation, ThpMode, ValidatedVmSpec,
 };
 
 /// AVF relocates the aarch64 PCI windows on every aarch64 host for a partner hypervisor; keep
@@ -57,6 +57,7 @@ pub struct DirectCrosvmBackend {
     hypervisor_device: PathBuf,
     host: Option<HostResources>,
     profile: PerformanceProfile,
+    thp: ThpMode,
 }
 
 impl DirectCrosvmBackend {
@@ -67,6 +68,7 @@ impl DirectCrosvmBackend {
             hypervisor_device,
             host: None,
             profile: PerformanceProfile::default(),
+            thp: ThpMode::default(),
         }
     }
 
@@ -87,6 +89,11 @@ impl DirectCrosvmBackend {
 
     pub fn with_performance_profile(mut self, profile: PerformanceProfile) -> Self {
         self.profile = profile;
+        self
+    }
+
+    pub fn with_host_thp(mut self, thp: ThpMode) -> Self {
+        self.thp = thp;
         self
     }
 
@@ -114,7 +121,8 @@ impl DirectCrosvmBackend {
             spec.vcpus,
             CpuControl::PerVcpuAffinity,
         )
-        .map_err(BackendError::Placement)?;
+        .map_err(BackendError::Placement)?
+        .for_host_thp(self.thp);
 
         let kernel = utf8(&spec.kernel)?;
         let initrd = utf8(&spec.initrd)?;

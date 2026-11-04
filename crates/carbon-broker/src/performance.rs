@@ -9,6 +9,44 @@
 
 use crate::{HostResources, PlacementError, VcpuPlacement};
 
+/// Runtime transparent-huge-page mode of the host (`/sys/kernel/mm/transparent_hugepage/enabled`).
+/// `--hugepages` / AVF `hugePages` only *advise* THP, so they do nothing when the host runs with
+/// `never`, as the stock Redmi kunzite (Snapdragon 6 Gen 3) firmware does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ThpMode {
+    Always,
+    Madvise,
+    Never,
+    #[default]
+    Unknown,
+}
+
+impl ThpMode {
+    /// Parses the sysfs format, where the active mode is bracketed: `always [madvise] never`.
+    pub fn parse(text: &str) -> Self {
+        let active = text
+            .split_whitespace()
+            .find_map(|token| token.strip_prefix('[')?.strip_suffix(']'));
+        match active {
+            Some("always") => ThpMode::Always,
+            Some("madvise") => ThpMode::Madvise,
+            Some("never") => ThpMode::Never,
+            _ => ThpMode::Unknown,
+        }
+    }
+
+    pub fn read(path: &std::path::Path) -> Self {
+        std::fs::read_to_string(path)
+            .map(|text| Self::parse(&text))
+            .unwrap_or(ThpMode::Unknown)
+    }
+
+    /// Whether advising huge pages can have any effect on this host.
+    pub fn honours_advice(self) -> bool {
+        self != ThpMode::Never
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PerformanceProfile {
     /// Pinned vCPUs with guest-driven DVFS where the backend allows it; maximum responsiveness.
@@ -98,6 +136,13 @@ impl GuestPerformancePlan {
             hugepages: true,
             balloon_page_reporting: true,
         })
+    }
+
+    /// Drops huge-page advice the host would ignore, so the plan (and its evidence report) never
+    /// claims a lever that cannot take effect.
+    pub fn for_host_thp(mut self, thp: ThpMode) -> Self {
+        self.hugepages &= thp.honours_advice();
+        self
     }
 
     /// crosvm `run` arguments that realize this plan. Only flags present in the pinned crosvm

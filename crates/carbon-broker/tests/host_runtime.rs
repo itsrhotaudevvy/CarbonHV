@@ -144,3 +144,20 @@ fn runtime_publication_rejects_non_utf8_managed_paths_without_lossy_conversion()
         Err(HostRuntimeRequestError::NonUtf8Path),
     );
 }
+
+#[test]
+fn avf_hosts_running_thp_never_do_not_request_huge_pages() {
+    let spec = spec();
+    let plan = AvfBackend::new(
+        PathBuf::from("/apex/com.android.virt/bin/vm"),
+        PathBuf::from("/dev/kvm"),
+    )
+    .with_host_thp(carbon_broker::ThpMode::Never)
+    .build_graphics_platform_plan(
+        &spec,
+        AvfGraphicsConfig::gfxstream_vulkan(1080, 2392, 440, 120).unwrap(),
+    )
+    .unwrap();
+    assert!(!plan.performance.huge_pages);
+    assert!(plan.performance.boost_uclamp);
+}

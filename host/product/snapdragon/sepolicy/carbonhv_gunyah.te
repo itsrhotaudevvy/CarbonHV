@@ -1,0 +1,6 @@
+# /dev/gunyah is labeled vendor_gunyah_dev by Qualcomm vendor policy (observed on SM6475,
+# qualification/gpu/reports/redmi-kunzite-sm6475-host-probe-2026-11-04.txt). AOSP lets crosvm
+# open any device carrying the public vm_manager_device_type attribute, and its neverallows keep
+# every other coredomain and app away from such devices. Do not relabel the node and do not add
+# direct allow rules for other domains.
+typeattribute vendor_gunyah_dev vm_manager_device_type;
