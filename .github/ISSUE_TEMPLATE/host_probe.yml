@@ -1,0 +1,46 @@
+name: Host probe report
+description: Share read-only qualification facts from a real Android phone (Tensor, Exynos, Dimensity, Snapdragon, ...).
+title: "[host] <device> / <SoC>"
+labels: [host-evidence]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! The probe is read-only. Run `qualification/carbon-qualify.sh --adb <serial>` and paste the output.
+        **Remove the `source=adb:<serial>` line** and anything else you consider private before posting.
+        Do not modify `/system_ext` on a stock user build to try CarbonHV.
+  - type: input
+    id: device
+    attributes:
+      label: Device and SoC
+      placeholder: "Pixel 9 / Tensor G4"
+    validations:
+      required: true
+  - type: dropdown
+    id: build
+    attributes:
+      label: Host build
+      options:
+        - Stock vendor firmware
+        - Custom/controlled build (describe below)
+    validations:
+      required: true
+  - type: textarea
+    id: probe
+    attributes:
+      label: Probe output
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Bootloader state, custom ROM, anything unusual (for example, AVF terminal app works or not).
+  - type: input
+    id: commit
+    attributes:
+      label: CarbonHV commit
+      placeholder: "git rev-parse --short HEAD"
+    validations:
+      required: true
