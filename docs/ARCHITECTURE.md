@@ -994,6 +994,7 @@ These may be shared roles, but none can be replaced by UI-only development. Trea
 | ADR-008 | Host-managed OS updates initially | Gives one owner for system state and recovery | A guest's upstream model requires a reviewed alternative |
 | ADR-009 | One foreground VM; cold boot recovery baseline | Controls memory and snapshot complexity | Resource and checkpoint evidence supports expansion |
 | ADR-010 | Explicit, revocable sharing; private GrapheneOS profile | Limits integration attack surface | User research supports additional bounded defaults |
+| ADR-011 | Gunyah is not KVM: a Gunyah-only host is unsupported until a Gunyah backend adapter is qualified | A Snapdragon phone with `/dev/gunyah`, a vendor `qvirt` service and no `/dev/kvm` was observed (2026-09-30); AVF reports VMs unsupported there | Gunyah VM creation from a CarbonHV-controlled service is demonstrated on a physical host |
 | ADR-011 | Downstream guest identity and security feature accounting | Matches actual provenance and capabilities | Upstream officially adopts a target |
 | ADR-012 | No software/remote fallback hidden behind native claims | Keeps product behavior honest | Product scope explicitly changes |
 

@@ -200,3 +200,71 @@ fn release_rejects_qualification_from_a_different_material_tuple() {
         RendererSelection::Unavailable,
     );
 }
+
+fn adreno_710_host() -> GpuHostCapabilities {
+    let mut host = mali_host(false);
+    host.identity = GpuIdentity {
+        vendor: "Qualcomm".into(),
+        renderer: "Adreno (TM) 710".into(),
+        driver_version: Some("2150760518".into()),
+    };
+    host
+}
+
+#[test]
+fn adreno_profile_keeps_the_mali_guest_contract_with_its_own_identity() {
+    let adreno = GpuRendererProfile::gfxstream_vulkan_adreno();
+    let mali = GpuRendererProfile::gfxstream_vulkan_mali();
+
+    assert_eq!(adreno.id, "gfxstream-vulkan-adreno");
+    assert_eq!(adreno.host_renderer_prefix.as_deref(), Some("Adreno"));
+    assert_eq!(adreno.required, mali.required);
+    assert_eq!(adreno.supported_guest_apis, mali.supported_guest_apis);
+    assert_eq!(adreno.buffer_transport, mali.buffer_transport);
+    assert_eq!(adreno.synchronization, mali.synchronization);
+    assert!(
+        adreno.quirks.is_empty(),
+        "no Adreno quirk without measured evidence"
+    );
+}
+
+#[test]
+fn adreno_host_selects_only_the_adreno_profile_and_only_as_experimental() {
+    let profiles = [
+        GpuRendererProfile::gfxstream_vulkan_mali(),
+        GpuRendererProfile::gfxstream_vulkan_adreno(),
+    ];
+
+    assert_eq!(
+        select_renderer(
+            &adreno_710_host(),
+            &profiles,
+            RendererSelectionMode::DeveloperExperimental,
+            None,
+        ),
+        RendererSelection::Experimental(GpuRendererProfile::gfxstream_vulkan_adreno()),
+    );
+    assert_eq!(
+        select_renderer(
+            &adreno_710_host(),
+            &profiles,
+            RendererSelectionMode::Release,
+            None
+        ),
+        RendererSelection::Unavailable,
+        "an unqualified Adreno host must not be released on observation alone",
+    );
+}
+
+#[test]
+fn adreno_profile_does_not_select_on_mali_identity() {
+    assert_eq!(
+        select_renderer(
+            &mali_host(true),
+            &[GpuRendererProfile::gfxstream_vulkan_adreno()],
+            RendererSelectionMode::Release,
+            None,
+        ),
+        RendererSelection::Unavailable,
+    );
+}

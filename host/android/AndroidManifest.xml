@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="dev.carbonhv.host"
+    android:sharedUserId="android.uid.system">
+
+    <uses-permission android:name="android.permission.MANAGE_VIRTUAL_MACHINE" />
+    <uses-permission android:name="android.permission.USE_CUSTOM_VIRTUAL_MACHINE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-feature android:name="android.software.virtualization_framework" android:required="true" />
+
+    <application
+        android:allowBackup="false"
+        android:directBootAware="true"
+        android:label="CarbonHV Host Integration"
+        android:supportsRtl="true">
+        <receiver
+            android:name=".CarbonHvHostBootReceiver"
+            android:directBootAware="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name=".CarbonHvHostService"
+            android:directBootAware="true"
+            android:exported="true" />
+    </application>
+</manifest>

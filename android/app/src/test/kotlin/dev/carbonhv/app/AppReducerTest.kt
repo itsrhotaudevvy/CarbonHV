@@ -59,6 +59,23 @@ class AppReducerTest {
     }
 
     @Test
+    fun runtime_state_updates_are_scoped_to_the_selected_instance() {
+        var state = AppState.initial()
+        state = reduceApp(state, AppEvent.OpenCreate("grapheneos"))
+        state = reduceApp(state, AppEvent.CreateNameChanged("Private"))
+        state = reduceApp(state, AppEvent.ConfirmCreate)
+        val id = state.instances.single().id
+
+        state = reduceApp(
+            state,
+            AppEvent.SessionStateChanged(id, dev.carbonhv.domain.SessionUiState.Running),
+        )
+
+        assertEquals(dev.carbonhv.domain.SessionUiState.Running, state.instances.single().sessionState)
+        assertEquals("grapheneos", state.instances.single().bundleId)
+    }
+
+    @Test
     fun recovery_event_routes_to_recovery_screen_with_failure_context() {
         var state = AppState.initial()
         state = reduceApp(state, AppEvent.RecoveryRequired(FailureKind.HostUpdateIncompatible))

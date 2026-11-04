@@ -139,6 +139,40 @@ emit_adb_probe() {
     avf_revision=unknown
   fi
   display_modes="$(adb -s "$target" shell 'dumpsys display 2>/dev/null | grep -m1 -E "supportedModes|mSupportedModes" || true' 2>/dev/null | tr -d '\r')"
+  # A raw DisplayDeviceInfo line is unreadable; reduce it to WxH@rates when that shape is present.
+  if [[ "$display_modes" =~ ([0-9]+)\ x\ ([0-9]+).*supportedRefreshRates\ \[([^]]*)\] ]]; then
+    display_modes="${BASH_REMATCH[1]}x${BASH_REMATCH[2]}@${BASH_REMATCH[3]// /}"
+  fi
+
+  local gunyah_status qvirt_status avf_vm_info cpu_capacities vkjson hypervisor
+  gunyah_status="$(adb -s "$target" shell 'if [ -e /dev/gunyah ]; then echo yes; else echo no; fi' 2>/dev/null | tr -d '\r')"
+  qvirt_status="$(adb -s "$target" shell 'service check vendor.qti.qvirt.IVirtualizationService/default 2>/dev/null' 2>/dev/null | tr -d '\r')"
+  avf_vm_info="$(adb -s "$target" shell 'timeout 5 /apex/com.android.virt/bin/vm info </dev/null 2>&1 | head -1' 2>/dev/null | tr -d '\r' | tr '\n' ' ')"
+  cpu_capacities="$(adb -s "$target" shell 'for d in /sys/devices/system/cpu/cpu[0-9]*; do cat $d/cpu_capacity 2>/dev/null; done' 2>/dev/null | tr -d '\r' | paste -sd, -)"
+  vkjson="$(adb -s "$target" shell 'cmd gpu vkjson 2>/dev/null' 2>/dev/null | tr -d '\r')"
+
+  # Adreno's SurfaceFlinger dump has no "Name:" line; fall back to the GLES identity, then Vulkan.
+  if [[ -z "$gpu_renderer" ]]; then
+    gpu_renderer="$(sed -n 's/^GLES: [^,]*, \(.*\), OpenGL ES.*/\1/p' <<<"$sf_dump" | head -1)"
+  fi
+  if [[ -z "$gpu_renderer" ]]; then
+    gpu_renderer="$(sed -n 's/.*"deviceName" : "\(.*\)".*/\1/p' <<<"$vkjson" | head -1)"
+  fi
+  if [[ -z "$vulkan_driver_version" ]]; then
+    vulkan_driver_version="$(sed -n 's/.*"driverVersion" : \([0-9]*\).*/\1/p' <<<"$vkjson" | head -1)"
+  fi
+
+  if [[ "$kvm_status" == yes ]]; then
+    hypervisor=kvm
+  elif [[ "$gunyah_status" == yes ]]; then
+    hypervisor=gunyah
+  else
+    hypervisor=none
+  fi
+  [[ -n "$gunyah_status" ]] || gunyah_status=unknown
+  [[ "$qvirt_status" == *": found"* ]] && qvirt_status=yes || qvirt_status=no
+  [[ -n "$cpu_capacities" ]] || cpu_capacities=unknown
+  [[ -n "$avf_vm_info" ]] || avf_vm_info=unknown
 
   [[ -n "$soc" ]] || soc=unknown
   [[ -n "$egl_provider" ]] || egl_provider=unknown
@@ -153,6 +187,11 @@ emit_adb_probe() {
   printf 'android_abi=%s\n' "$abi"
   printf 'avf_vm_tool=%s\n' "$vm_status"
   printf 'kvm_device=%s\n' "$kvm_status"
+  printf 'gunyah_device=%s\n' "$gunyah_status"
+  printf 'hypervisor=%s\n' "$hypervisor"
+  printf 'vendor_virtualization_service=%s\n' "$qvirt_status"
+  printf 'avf_vm_info=%s\n' "$avf_vm_info"
+  printf 'cpu_capacities=%s\n' "$cpu_capacities"
   printf 'soc=%s\n' "$soc"
   printf 'gpu_renderer=%s\n' "$gpu_renderer"
   printf 'egl_provider=%s\n' "$egl_provider"
@@ -165,6 +204,10 @@ emit_adb_probe() {
 
   if [[ "$abi" != arm64-v8a* && "$abi" != arm64* ]]; then
     printf 'qualification=UNSUPPORTED\nreason=host is not ARM64\n'
+    exit 3
+  fi
+  if [[ "$hypervisor" == gunyah && "$kvm_status" != "yes" ]]; then
+    printf 'qualification=UNSUPPORTED\nreason=Gunyah hypervisor present but AVF has no KVM; no qualified Gunyah backend\n'
     exit 3
   fi
   if [[ "$vm_status" != "yes" || "$kvm_status" != "yes" ]]; then

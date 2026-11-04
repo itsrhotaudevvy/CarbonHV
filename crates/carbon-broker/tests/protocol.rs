@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use carbon_broker::{Broker, BrokerPolicy, RuntimeError, ValidatedVmDisk};
+use carbon_broker::{Broker, BrokerPolicy, DisplaySessionIdentity, RuntimeError, ValidatedVmDisk};
 use carbon_core::Generation;
 use carbon_protocol::{
     CallerIdentity, ManagedObjectId, VmDiskRequest, VmResources, VmStartRequest,
@@ -152,4 +152,81 @@ fn duplicate_stop_request_is_idempotent() {
         broker.stop(&caller(), "vm-demo", Generation(9), 61),
         Err(RuntimeError::InstanceNotRunning)
     );
+}
+
+#[test]
+fn display_session_authority_is_scoped_to_the_live_vm_generation() {
+    let mut broker = Broker::new(policy());
+    broker.start(&caller(), request(7)).unwrap();
+
+    assert_eq!(
+        broker.claim_display_session(&caller(), "vm-demo", Generation(7)),
+        Ok(DisplaySessionIdentity {
+            instance_id: "vm-demo".into(),
+            generation: Generation(7),
+        })
+    );
+    assert_eq!(
+        broker.authorize_display_session(&caller(), "vm-demo", Generation(7)),
+        Ok(())
+    );
+    assert_eq!(
+        broker.authorize_display_session(&caller(), "vm-demo", Generation(6)),
+        Err(RuntimeError::GenerationMismatch {
+            expected: Generation(7),
+            got: Generation(6),
+        })
+    );
+
+    broker
+        .stop(&caller(), "vm-demo", Generation(7), 61)
+        .unwrap();
+    assert_eq!(
+        broker.authorize_display_session(&caller(), "vm-demo", Generation(7)),
+        Err(RuntimeError::DisplaySessionNotActive)
+    );
+}
+
+#[test]
+fn android_display_service_slot_has_only_one_broker_owner() {
+    let mut broker = Broker::new(policy());
+    broker.start(&caller(), request(3)).unwrap();
+
+    let mut second = request(1);
+    second.request_id = 51;
+    second.instance_id = "vm-other".into();
+    broker.start(&caller(), second).unwrap();
+
+    broker
+        .claim_display_session(&caller(), "vm-demo", Generation(3))
+        .unwrap();
+    assert_eq!(
+        broker.claim_display_session(&caller(), "vm-other", Generation(1)),
+        Err(RuntimeError::DisplaySessionBusy {
+            instance_id: "vm-demo".into(),
+            generation: Generation(3),
+        })
+    );
+}
+
+#[test]
+fn broker_exposes_read_only_active_display_session_snapshot() {
+    let mut broker = Broker::new(policy());
+    broker.start(&caller(), request(11)).unwrap();
+    broker
+        .claim_display_session(&caller(), "vm-demo", Generation(11))
+        .unwrap();
+
+    assert_eq!(
+        broker.active_display_session(),
+        Some(DisplaySessionIdentity {
+            instance_id: "vm-demo".into(),
+            generation: Generation(11),
+        })
+    );
+
+    broker
+        .stop(&caller(), "vm-demo", Generation(11), 91)
+        .unwrap();
+    assert_eq!(broker.active_display_session(), None);
 }

@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Color
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
@@ -23,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -43,12 +46,32 @@ interface GuestSurfaceCallbacks {
     fun onSurfaceAvailable(surface: Surface, width: Int, height: Int)
     fun onSurfaceChanged(surface: Surface, width: Int, height: Int)
     fun onSurfaceDestroyed()
+    fun onTouch(
+        action: Int,
+        actionPointerId: Int,
+        viewportWidth: Int,
+        viewportHeight: Int,
+        pointerIds: IntArray,
+        xs: FloatArray,
+        ys: FloatArray,
+    ): Boolean
+    fun onKey(linuxKeyCode: Int, down: Boolean): Boolean
 }
 
 object NoopGuestSurfaceCallbacks : GuestSurfaceCallbacks {
     override fun onSurfaceAvailable(surface: Surface, width: Int, height: Int) = Unit
     override fun onSurfaceChanged(surface: Surface, width: Int, height: Int) = Unit
     override fun onSurfaceDestroyed() = Unit
+    override fun onTouch(
+        action: Int,
+        actionPointerId: Int,
+        viewportWidth: Int,
+        viewportHeight: Int,
+        pointerIds: IntArray,
+        xs: FloatArray,
+        ys: FloatArray,
+    ): Boolean = false
+    override fun onKey(linuxKeyCode: Int, down: Boolean): Boolean = false
 }
 
 @Composable
@@ -87,37 +110,68 @@ fun ImmersiveSessionScreen(
             .fillMaxSize()
             .background(ComposeColor.Black),
     ) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { viewContext ->
-                SurfaceView(viewContext).apply {
-                    setBackgroundColor(Color.BLACK)
-                    keepScreenOn = true
-                    holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) {
-                            callbacks.onSurfaceAvailable(
-                                holder.surface,
-                                width.coerceAtLeast(1),
-                                height.coerceAtLeast(1),
+        key(callbacks) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { viewContext ->
+                    SurfaceView(viewContext).apply {
+                        setBackgroundColor(Color.BLACK)
+                        keepScreenOn = true
+                        isFocusable = true
+                        isFocusableInTouchMode = true
+                        setOnTouchListener { view, event ->
+                            val pointerCount = event.pointerCount
+                            val pointerIds = IntArray(pointerCount) { index -> event.getPointerId(index) }
+                            val xs = FloatArray(pointerCount) { index -> event.getX(index) }
+                            val ys = FloatArray(pointerCount) { index -> event.getY(index) }
+                            callbacks.onTouch(
+                                action = event.actionMasked,
+                                actionPointerId = event.getPointerId(event.actionIndex),
+                                viewportWidth = view.width.coerceAtLeast(1),
+                                viewportHeight = view.height.coerceAtLeast(1),
+                                pointerIds = pointerIds,
+                                xs = xs,
+                                ys = ys,
                             )
                         }
-
-                        override fun surfaceChanged(
-                            holder: SurfaceHolder,
-                            format: Int,
-                            width: Int,
-                            height: Int,
-                        ) {
-                            callbacks.onSurfaceChanged(holder.surface, width, height)
+                        setOnKeyListener { _, keyCode, event ->
+                            if (event == null || isHostOwnedHardwareKey(keyCode)) {
+                                false
+                            } else {
+                                val scanCode = event.scanCode
+                                scanCode > 0 && callbacks.onKey(
+                                    linuxKeyCode = scanCode,
+                                    down = event.action != KeyEvent.ACTION_UP,
+                                )
+                            }
                         }
+                        holder.addCallback(object : SurfaceHolder.Callback {
+                            override fun surfaceCreated(holder: SurfaceHolder) {
+                                requestFocus()
+                                callbacks.onSurfaceAvailable(
+                                    holder.surface,
+                                    width.coerceAtLeast(1),
+                                    height.coerceAtLeast(1),
+                                )
+                            }
 
-                        override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            callbacks.onSurfaceDestroyed()
-                        }
-                    })
-                }
-            },
-        )
+                            override fun surfaceChanged(
+                                holder: SurfaceHolder,
+                                format: Int,
+                                width: Int,
+                                height: Int,
+                            ) {
+                                callbacks.onSurfaceChanged(holder.surface, width, height)
+                            }
+
+                            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                                callbacks.onSurfaceDestroyed()
+                            }
+                        })
+                    }
+                },
+            )
+        }
 
         Button(
             onClick = { controlsVisible = !controlsVisible },
@@ -185,3 +239,11 @@ private fun Modifier.offsetCompat(x: Float, y: Float): Modifier =
             IntOffset(x.roundToInt(), y.roundToInt())
         },
     )
+
+private fun isHostOwnedHardwareKey(keyCode: Int): Boolean = when (keyCode) {
+    KeyEvent.KEYCODE_VOLUME_UP,
+    KeyEvent.KEYCODE_VOLUME_DOWN,
+    KeyEvent.KEYCODE_VOLUME_MUTE,
+    KeyEvent.KEYCODE_POWER -> true
+    else -> false
+}

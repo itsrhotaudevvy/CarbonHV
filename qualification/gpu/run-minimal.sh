@@ -94,16 +94,22 @@ collect_from_input() {
   "$script_dir/collect-report.sh" --input "$1"
 }
 
+# probe_physical_host [tolerate-unsupported]
+# Evidence mode is strict: an unsupported host cannot produce graphics evidence. Bring-up preflight
+# passes "tolerate-unsupported" so a host that fails virtualization admission (for example a Gunyah
+# phone without KVM) still yields a blocker report instead of aborting with no record.
 probe_physical_host() {
   command -v adb >/dev/null || { echo "adb not found" >&2; exit 69; }
   set +e
   host_report="$("$repo_root/qualification/carbon-qualify.sh" --adb "$serial" 2>&1)"
   host_status=$?
   set -e
-  [[ $host_status -eq 0 || $host_status -eq 4 ]] || {
+  if [[ $host_status -eq 3 && "${1:-}" == tolerate-unsupported ]]; then
+    :
+  elif [[ $host_status -ne 0 && $host_status -ne 4 ]]; then
     printf '%s\n' "$host_report" >&2
     exit "$host_status"
-  }
+  fi
   device_model="$(adb -s "$serial" shell getprop ro.product.model 2>/dev/null | tr -d '\r')"
   [[ -n "$device_model" ]] || device_model=unknown
 }
@@ -141,17 +147,31 @@ elif [[ -n "$serial" && -n "$evidence" && -z "$fixture" && "$dry_run" == false ]
   } > "$merged"
   report="$(collect_from_input "$merged")"
 elif [[ -n "$serial" && -n "$renderer" && -z "$evidence" && -z "$fixture" && "$dry_run" == false ]]; then
-  [[ "$renderer" == gfxstream-vulkan-mali ]] || {
-    echo "unsupported physical renderer profile: $renderer" >&2
+  case "$renderer" in
+    gfxstream-vulkan-mali) renderer_host_prefix="Mali-" ;;
+    gfxstream-vulkan-adreno) renderer_host_prefix="Adreno" ;;
+    *)
+      echo "unsupported physical renderer profile: $renderer" >&2
+      exit 65
+      ;;
+  esac
+  probe_physical_host tolerate-unsupported
+  host_gpu="$(host_value gpu_renderer)"
+  [[ "$host_gpu" == "$renderer_host_prefix"* ]] || {
+    echo "renderer profile $renderer does not match host GPU '$host_gpu'" >&2
     exit 65
   }
-  probe_physical_host
 
   blockers=()
+  if [[ $host_status -eq 3 ]]; then
+    blockers+=("host-virtualization-unsupported-$(host_value hypervisor 2>/dev/null || echo unknown)")
+  fi
   for artifact in out/grapheneos/boot.img out/grapheneos/system.img; do
     [[ -f "$repo_root/$artifact" ]] || blockers+=("missing-$artifact")
   done
-  blockers+=("avf-display-surface-handoff-not-wired")
+  host_integration_path="$(adb -s "$serial" shell pm path dev.carbonhv.host 2>/dev/null | tr -d '\r' || true)"
+  [[ "$host_integration_path" == package:* ]] || blockers+=("carbonhv-host-integration-not-installed")
+  blockers+=("carbonhvd-runtime-session-publication-not-wired")
 
   guest_version="$(awk -F= '$1 ~ /^[[:space:]]*version[[:space:]]*$/ { value=$2; gsub(/^[[:space:]\"]+|[[:space:]\"]+$/, "", value); print value; exit }' "$repo_root/bundles/grapheneos/bundle.toml")"
   [[ -n "$guest_version" ]] || guest_version=unknown

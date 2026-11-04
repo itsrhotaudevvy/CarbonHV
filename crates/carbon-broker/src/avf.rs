@@ -3,11 +3,13 @@ use std::path::{Component, PathBuf};
 use crate::{BackendError, HostProbe, HostVirtualizationClass, ProgramInvocation, ValidatedVmSpec};
 
 const GFXSTREAM_CONTEXT_TYPES: [&str; 2] = ["gfxstream-vulkan", "gfxstream-composer"];
+const GFXSTREAM_RENDERER_FEATURES: &str = "VulkanDisableCoherentMemoryAndEmulate:enabled;VulkanAllocateHostVisibleAsUdmabuf:enabled;ExternalBlob:enabled";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvfGraphicsConfig {
     width_pixels: u32,
     height_pixels: u32,
+    density_dpi: u32,
     refresh_rate: u32,
 }
 
@@ -15,13 +17,16 @@ impl AvfGraphicsConfig {
     pub fn gfxstream_vulkan(
         width_pixels: u32,
         height_pixels: u32,
+        density_dpi: u32,
         refresh_rate: u32,
     ) -> Result<Self, BackendError> {
         if width_pixels == 0
             || height_pixels == 0
+            || density_dpi == 0
             || refresh_rate == 0
             || width_pixels > 16_384
             || height_pixels > 16_384
+            || density_dpi > 10_000
             || refresh_rate > 1_000
         {
             return Err(BackendError::InvalidGraphicsConfig);
@@ -29,9 +34,51 @@ impl AvfGraphicsConfig {
         Ok(Self {
             width_pixels,
             height_pixels,
+            density_dpi,
             refresh_rate,
         })
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvfGpuConfig {
+    pub backend: &'static str,
+    pub renderer_use_egl: bool,
+    pub renderer_use_gles: bool,
+    pub renderer_use_glx: bool,
+    pub renderer_use_surfaceless: bool,
+    pub renderer_use_vulkan: bool,
+    pub context_types: Vec<&'static str>,
+    pub renderer_features: &'static str,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvfDisplayConfig {
+    pub width_pixels: u32,
+    pub height_pixels: u32,
+    pub density_dpi: u32,
+    pub refresh_rate: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvfInputConfig {
+    pub multitouch: bool,
+    pub keyboard: bool,
+    pub mouse: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AvfPlatformVmPlan {
+    pub platform_version: &'static str,
+    pub kernel: PathBuf,
+    pub initrd: PathBuf,
+    pub disks: Vec<crate::ValidatedVmDisk>,
+    pub memory_mib: u64,
+    pub vcpus: u16,
+    pub kernel_params: Vec<String>,
+    pub gpu: AvfGpuConfig,
+    pub display: AvfDisplayConfig,
+    pub input: AvfInputConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -45,6 +92,7 @@ pub struct AvfLaunchPlan {
 pub struct AvfBackend {
     vm_tool: PathBuf,
     kvm_device: PathBuf,
+    gunyah_device: Option<PathBuf>,
 }
 
 impl AvfBackend {
@@ -52,20 +100,35 @@ impl AvfBackend {
         Self {
             vm_tool,
             kvm_device,
+            gunyah_device: None,
         }
+    }
+
+    /// Lets the probe recognise Qualcomm Gunyah hosts (for example `/dev/gunyah`) so they are
+    /// reported as such instead of as a generic missing-KVM failure.
+    pub fn with_gunyah_device(mut self, gunyah_device: PathBuf) -> Self {
+        self.gunyah_device = Some(gunyah_device);
+        self
     }
 
     pub fn probe(&self) -> HostProbe {
         let vm_tool_present = self.vm_tool.is_file();
         let kvm_present = self.kvm_device.exists();
+        let gunyah_present = self
+            .gunyah_device
+            .as_ref()
+            .is_some_and(|device| device.exists());
         let class = if vm_tool_present && kvm_present {
             HostVirtualizationClass::DevelopmentReady
+        } else if gunyah_present && !kvm_present {
+            HostVirtualizationClass::GunyahWithoutBackend
         } else {
             HostVirtualizationClass::Unavailable
         };
         HostProbe {
             vm_tool_present,
             kvm_present,
+            gunyah_present,
             class,
         }
     }
@@ -75,29 +138,16 @@ impl AvfBackend {
         spec: &ValidatedVmSpec,
         runtime_dir: PathBuf,
     ) -> Result<AvfLaunchPlan, BackendError> {
-        self.build_launch_plan_inner(spec, runtime_dir, None)
-    }
-
-    pub fn build_graphics_launch_plan(
-        &self,
-        spec: &ValidatedVmSpec,
-        runtime_dir: PathBuf,
-        graphics: AvfGraphicsConfig,
-    ) -> Result<AvfLaunchPlan, BackendError> {
-        self.build_launch_plan_inner(spec, runtime_dir, Some(graphics))
-    }
-
-    fn build_launch_plan_inner(
-        &self,
-        spec: &ValidatedVmSpec,
-        runtime_dir: PathBuf,
-        graphics: Option<AvfGraphicsConfig>,
-    ) -> Result<AvfLaunchPlan, BackendError> {
         if runtime_dir
             .components()
             .any(|component| matches!(component, Component::ParentDir))
         {
             return Err(BackendError::UnsafeRuntimeDirectory);
+        }
+        if spec.vcpus != 1 {
+            return Err(BackendError::UnsupportedCliVcpuCount {
+                requested: spec.vcpus,
+            });
         }
 
         let config_path =
@@ -119,8 +169,8 @@ impl AvfBackend {
         push_json_field(&mut config_json, "params", &params, false);
         config_json.push_str(",\"memory_mib\":");
         config_json.push_str(&spec.memory_mib.to_string());
-        config_json.push_str(",\"vcpus\":");
-        config_json.push_str(&spec.vcpus.to_string());
+        push_json_field(&mut config_json, "cpu_topology", "one_cpu", false);
+        push_json_field(&mut config_json, "platform_version", "~1.0", false);
         config_json.push_str(",\"disks\":[");
         for (index, disk) in spec.disks.iter().enumerate() {
             if index != 0 {
@@ -133,10 +183,6 @@ impl AvfBackend {
             config_json.push_str(",\"partitions\":[]}");
         }
         config_json.push(']');
-
-        if let Some(graphics) = graphics {
-            append_graphics_config(&mut config_json, &graphics);
-        }
         config_json.push('}');
 
         Ok(AvfLaunchPlan {
@@ -148,42 +194,51 @@ impl AvfBackend {
             },
         })
     }
-}
 
-fn append_graphics_config(output: &mut String, graphics: &AvfGraphicsConfig) {
-    output.push_str(",\"gpu\":{");
-    output.push_str("\"backend\":\"gfxstream\"");
-    output.push_str(",\"renderer_use_egl\":false");
-    output.push_str(",\"renderer_use_gles\":false");
-    output.push_str(",\"renderer_use_glx\":false");
-    output.push_str(",\"renderer_use_surfaceless\":true");
-    output.push_str(",\"renderer_use_vulkan\":true");
-    output.push_str(",\"context_types\":[");
-    for (index, context_type) in GFXSTREAM_CONTEXT_TYPES.iter().enumerate() {
-        if index != 0 {
-            output.push(',');
+    pub fn build_graphics_platform_plan(
+        &self,
+        spec: &ValidatedVmSpec,
+        graphics: AvfGraphicsConfig,
+    ) -> Result<AvfPlatformVmPlan, BackendError> {
+        let mut kernel_params = spec.kernel_params.clone();
+        if !kernel_params
+            .iter()
+            .any(|param| param == "gfxstream_enabled")
+        {
+            kernel_params.push("gfxstream_enabled".into());
         }
-        output.push('"');
-        output.push_str(context_type);
-        output.push('"');
+
+        Ok(AvfPlatformVmPlan {
+            platform_version: "~1.0",
+            kernel: spec.kernel.clone(),
+            initrd: spec.initrd.clone(),
+            disks: spec.disks.clone(),
+            memory_mib: spec.memory_mib,
+            vcpus: spec.vcpus,
+            kernel_params,
+            gpu: AvfGpuConfig {
+                backend: "gfxstream",
+                renderer_use_egl: false,
+                renderer_use_gles: false,
+                renderer_use_glx: false,
+                renderer_use_surfaceless: true,
+                renderer_use_vulkan: true,
+                context_types: GFXSTREAM_CONTEXT_TYPES.to_vec(),
+                renderer_features: GFXSTREAM_RENDERER_FEATURES,
+            },
+            display: AvfDisplayConfig {
+                width_pixels: graphics.width_pixels,
+                height_pixels: graphics.height_pixels,
+                density_dpi: graphics.density_dpi,
+                refresh_rate: graphics.refresh_rate,
+            },
+            input: AvfInputConfig {
+                multitouch: true,
+                keyboard: true,
+                mouse: true,
+            },
+        })
     }
-    output.push_str("]}");
-
-    output.push_str(",\"display\":{");
-    output.push_str("\"width_pixels\":");
-    output.push_str(&graphics.width_pixels.to_string());
-    output.push_str(",\"height_pixels\":");
-    output.push_str(&graphics.height_pixels.to_string());
-    output.push_str(",\"refresh_rate\":");
-    output.push_str(&graphics.refresh_rate.to_string());
-    output.push('}');
-
-    output.push_str(",\"input\":{");
-    output.push_str("\"touchscreen\":true");
-    output.push_str(",\"keyboard\":true");
-    output.push_str(",\"mouse\":true");
-    output.push_str(",\"trackpad\":false");
-    output.push_str(",\"switches\":false}");
 }
 
 fn push_json_field(output: &mut String, key: &str, value: &str, first: bool) {

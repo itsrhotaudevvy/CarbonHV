@@ -1,9 +1,22 @@
-# Template policy. Device integration must resolve actual AVF/KVM labels on the pinned host branch.
-type carbonhvd, domain;
+type carbonhvd, domain, coredomain;
 type carbonhvd_exec, exec_type, system_file_type, file_type;
+type carbonhv_data_file, file_type, data_file_type, core_data_file_type;
+type carbonhv_broker_service, service_manager_type;
 
 init_daemon_domain(carbonhvd)
+binder_use(carbonhvd)
 
-# Keep file access scoped to a dedicated /data/misc/carbonhv label in the host product policy.
-# KVM/AVF permissions are intentionally not guessed here: the selected host branch must provide
-# the concrete device/service types and reviewable allow rules before H2 qualification.
+# carbonhvd is the only process allowed to publish the authoritative broker Binder.
+add_service(carbonhvd, carbonhv_broker_service)
+
+# carbonhvd is the only client allowed to discover and call the host runtime Binder.
+allow carbonhvd carbonhv_host_runtime_service:service_manager find;
+binder_call(carbonhvd, carbonhv_host_app)
+
+# Broker-owned object/runtime storage. Init creates the top-level directories as system:system.
+allow carbonhvd system_data_file:dir search;
+allow carbonhvd carbonhv_data_file:dir create_dir_perms;
+allow carbonhvd carbonhv_data_file:file create_file_perms;
+
+# crosvm receives already-opened descriptors for CarbonHV images. Do not grant open permission.
+allow crosvm_domain carbonhv_data_file:file { getattr read write ioctl lock };

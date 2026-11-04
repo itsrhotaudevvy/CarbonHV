@@ -49,6 +49,7 @@ One attached development host was re-probed on 2026-09-27:
 | Android release | 17 |
 | SDK | 37 |
 | Build fingerprint | `google/lynx/lynx:17/CP3A.260905.009/16091614:user/release-keys` |
+| Bootloader / vbmeta | unlocked / `orange` verified-boot state |
 | `/apex/com.android.virt/bin/vm` | Present/executable |
 | `/dev/kvm` | Present |
 | SoC | `GS201` (Tensor G2 family) |
@@ -65,11 +66,37 @@ One attached development host was re-probed on 2026-09-27:
 
 The ADB qualifier deliberately exits with its experimental status after these static checks. This host is a viable bring-up candidate; it is **not** a supported CarbonHV host tuple yet.
 
-The initial physical GPU bring-up was attempted through `qualification/gpu/run-minimal.sh`. The reproducible report is `qualification/gpu/reports/pixel-7a-mali-g710-2026-09-27.txt`; it remains `EXPERIMENTAL` and grants no GPU capability. The attempt stopped before guest boot because the GrapheneOS-derived boot/system artifacts are not built and CarbonHV has not yet connected its live session surface to AVF/crosvm's Android display service. Android 17's supported gfxstream configuration is now emitted by the broker; a separate `/system/bin/carbon-renderer` is not part of the initial Mali path. Direct shell access to AVF's bundled crosvm binary is also denied on this stock user build.
+The initial physical GPU bring-up was attempted through `qualification/gpu/run-minimal.sh`. The reproducible report is `qualification/gpu/reports/pixel-7a-mali-g710-2026-09-27.txt`; it remains `EXPERIMENTAL` and grants no GPU capability. A fresh 2026-09-28 readiness check is recorded in `qualification/gpu/reports/pixel-7a-platform-readiness-2026-09-28.txt`. The Android 17 Surface handoff, Rust host-runtime Binder publisher, framework-owned raw-config bridge, and CarbonHV-owned SELinux/service/property contracts now exist in source. The Pixel bootloader is unlocked, so a controlled host image is installable once built, but the stock user build still lacks the privileged `CarbonHvHostIntegration` package, `/system_ext/bin/carbonhvd`, and both CarbonHV Binder services. The controlled product image and real guest artifacts have not yet been built. Android 17's supported gfxstream configuration is emitted by the broker; a separate `/system/bin/carbon-renderer` is not part of the initial Mali path. Direct shell access to AVF's bundled crosvm binary is also denied on this stock user build.
 
 The 30-minute sustained entrypoint was also executed on the same Pixel and recorded in `qualification/gpu/reports/pixel-7a-mali-g710-sustained-2026-09-27.txt`. It stopped at the same preflight blockers before any guest workload ran. All performance/thermal/copy metrics therefore remain `unknown` or `not-run`, the threshold profile remains `uncalibrated`, and both `gpu.sustained` and `gpu.qualified` remain false.
 
 Separately, the current debug APK was installed and cold-launched on the Pixel. Portrait/landscape changes, background/foreground, and activity process recreation completed with no fatal/JNI/native presentation errors in the captured log. Because there was no live VM or guest frame source, this is only Android surface-lifecycle evidence; it does not prove VM continuity, buffer reuse, frame presentation, or Mali execution.
+
+## 2b. Second physical host: Snapdragon 6 Gen 3
+
+A Qualcomm development phone was probed read-only on 2026-09-30 (`qualification/gpu/reports/redmi-kunzite-sm6475-host-probe-2026-09-30.txt`, `qualification/gpu/reports/redmi-kunzite-sm6475-adreno710-2026-09-30.txt`):
+
+| Property | Observed value |
+| --- | --- |
+| Device | Redmi `kunzite` (`25098RA98G`) |
+| SoC | `SM6475` (Snapdragon 6 Gen 3): 4× Cortex-A78 (capacity 1024, 2.4 GHz) + 4× Cortex-A55 (capacity 405, 1.8 GHz) |
+| Memory | 7.2 GiB total (about 1.8 GiB available at probe time) |
+| GPU | `Adreno (TM) 710`, OpenGL ES 3.2, Vulkan 1.3 device (1.4 instance), driver `2150760518` |
+| Android release / kernel | 16 (SDK 36) / `6.6.118-android15-8` |
+| Bootloader / vbmeta | unlocked / `orange` |
+| Display | 1080 × 2392; 60/90/120 Hz |
+| Hypervisor | **Gunyah** (`/dev/gunyah` present; vendor `qti.qvirt` service registered) |
+| `/dev/kvm` | **Absent** |
+| AVF `vm info` | `VMs are not supported.` (`Device doesn't support protected or non-protected VMs`) |
+| CPU qualification result | `UNSUPPORTED` — Gunyah present, AVF has no KVM to run on |
+| Renderer profile | `gfxstream-vulkan-adreno` selected as **experimental** only |
+
+What this means:
+
+- **The AVF/crosvm-on-KVM path cannot run on this phone.** The limit is the hypervisor, not the SoC: no CarbonHV guest can boot here until a Gunyah VM backend exists and is qualified. The broker now reports this state as `GunyahWithoutBackend` and never treats it as ready.
+- Adreno support is a host provider/profile: the guest ABI stays CVD1 `virtio-gpu`. The `gfxstream-vulkan-adreno` profile shares the Mali profile's transport, buffer, sync and sandbox contract and carries no Adreno quirks. Gfxstream vs Mesa/Venus is still to be chosen from measurements, which cannot start without a bootable guest.
+- Chip-aware limits are implemented and unit-tested: the broker caps guest vCPUs at the number of performance cores (4 here) and leaves the Android host at least 3 GiB, so this phone grants at most 4319 MiB. That admits Ubuntu Touch (3072 MiB) and only just the GrapheneOS-derived bundle (4096 MiB). Low `MemAvailable` on this firmware is an admission-time risk.
+- Nothing above is a capability claim: every `gpu.*` capability is `false` and the overall result stays `EXPERIMENTAL`/`UNSUPPORTED`.
 
 ## 3. Starter guest status
 
@@ -86,13 +113,13 @@ The architecture defines v1 only when all mandatory statements below are true.
 
 | v1 criterion from architecture | Coverage | Evidence / gap |
 | --- | --- | --- |
-| At least one host tuple has local ARM64 hardware execution and qualified guest GPU acceleration | Partial | Pixel 7a exposes AVF `vm` + `/dev/kvm`; no CarbonHV guest boot or qualified GPU path yet |
+| At least one host tuple has local ARM64 hardware execution and qualified guest GPU acceleration | Partial | Pixel 7a exposes AVF `vm` + `/dev/kvm`; no CarbonHV guest boot or qualified GPU path yet. The Snapdragon 6 Gen 3 phone is Gunyah-only (no KVM) and is unsupported until a Gunyah backend exists |
 | Both starter bundles are available with truthful provenance/maintenance | Partial | Manifests/contracts/recipes exist; real pinned release images and maintenance baselines do not |
 | Native UI can create/start/use/leave/stop/update/backup/restore/delete | Partial | Native flows/reducers and transaction models exist; no live broker/guest end-to-end path |
 | Shells/apps/touch/keyboard/audio/rotation/networking match published matrix | Unverified | Requires both real guest ports on physical hardware |
 | Immersion has reliable host-owned escape and coherent gestures | Partial | Host escape/input policy exists; physical UX qualification not performed |
 | VMs survive activity/surface loss and tested crash/recovery | Partial | Reconnect/state/storage invariants are tested; live VM/process/surface recovery is unverified |
-| Guest data isolated; sharing explicit; no generic privileged shell | Partial | Storage IDs/leases and narrow broker design exist; production SELinux/IPC and sharing bridges are not integrated |
+| Guest data isolated; sharing explicit; no generic privileged shell | Partial | Storage IDs/leases plus CarbonHV service/file/property SELinux contracts exist; they are not yet compiled/installed in a controlled host image and sharing bridges remain unimplemented |
 | Signing/migration/rollback/recovery exercised | Partial | Migration/rollback transaction tests exist; production signing and real-image recovery are missing |
 | Sustained performance targets pass per guest | Unverified | Harness and workload definitions exist, but the Pixel profile is uncalibrated because no real guest performance/thermal baseline has run |
 | Unsupported configurations are blocked/experimental; no silent CPU emulation | Verified in policy | Admission/manifest rules fail closed; real product wiring must preserve these rules |
@@ -110,10 +137,10 @@ This is the Task 12 requirements pass against `docs/ARCHITECTURE.md`.
 | §5–6 decomposition/module boundaries | Rust core/protocol/broker/CLI + Kotlin domain/app + guest/host/qualification trees | Verified source structure |
 | §7 admission | Explicit host/bundle/resource capability intersection; unknown required capabilities fail closed | Verified policy; real backend authorization probe remains |
 | §8 CVD contract | CVD major 1, ARM64, virtio GPU/input/net/blk/snd + vsock contracts | Verified contracts; real AVF realization pending |
-| §9 lifecycle/persistence | State, generations, disk leases, idempotent operations | Verified model; platform service/runtime wiring pending |
+| §9 lifecycle/persistence | State, generations, disk leases, idempotent operations | Verified model; broker-to-host runtime publication types/Binder client exist, while the daemon's authenticated app-facing request loop remains pending |
 | §10 native host experience | Compose library/catalog/create/settings/recovery surfaces | Partial; live runtime, shortcuts, real install/download flows pending |
 | §11 immersion | SurfaceView, host escape affordance, geometry generations, input ownership policy | Partial; physical gesture modes, external display/fold/IME pending |
-| §12 graphics/display | Mali capability/profile model, Android 17 AVF gfxstream config, native SurfaceView lifecycle, AHardwareBuffer/fence fallback state machine, and proof harness | Partial; AVF Android display-service handoff is not wired and no physical guest-produced frame has reached the SurfaceView |
+| §12 graphics/display | Mali capability/profile model, Android 17 AVF gfxstream config, generation-scoped privileged display-service handoff, native SurfaceView reconnect path, AHardwareBuffer/fence fallback state machine, and proof harness | Partial; runtime publication is implemented in source but the controlled host package/daemon are not installed on the Pixel and no physical guest-produced frame has reached the SurfaceView |
 | §13 input/accessibility | Coordinate transforms and input policy tests | Partial; keyboard/IME/stylus/screen-reader/large-font physical acceptance pending |
 | §14 audio/camera/sensors/haptics | No end-to-end bridges qualified | Unverified / optional subset for v1 except audio output is mandatory |
 | §15 host/guest protocol | CVD1 vsock protocol document and bounded handshake/message contract | Partial; production agent implementations and adversarial runtime tests pending |
@@ -124,7 +151,7 @@ This is the Task 12 requirements pass against `docs/ARCHITECTURE.md`.
 | §20 update/rollback/backup/clone | Two-phase candidate model, data epochs, backup manifest, clone identity semantics | Verified model; signed artifacts and real disk fault injection pending |
 | §21 networking | Architecture only | Unverified on real runtime; VPN/lockdown/IPv6/offline tests pending |
 | §22 sharing/notifications | Protocol families described | Unverified; bridge implementations/grant revocation pending |
-| §23 security | Narrow typed broker and input/path/resource checks | Partial; Binder/SELinux/renderer/release-key controls pending |
+| §23 security | Narrow typed broker and input/path/resource checks | Partial; dedicated Binder/service-manager/file/property SELinux source contracts now exist, but product-policy compilation/enforcement, renderer hardening, target-product policy compilation/enforcement and release-key controls remain pending |
 | §24 performance/resources | Resource caps represented; no performance result claimed | Unverified on real guests; 60 Hz/latency/boot/thermal/reliability targets remain gates |
 | §25 failures/diagnostics | Recovery reducers and transaction failure semantics | Partial; structured runtime diagnostics/export and real failure injection pending |
 | §26 validation | Rust/Kotlin/contract/fixture tests plus ADB static probe | Partial; physical host/guest/adversarial/experience matrices pending |
@@ -137,9 +164,9 @@ This is the Task 12 requirements pass against `docs/ARCHITECTURE.md`.
 
 | Gate | State | What would close it |
 | --- | --- | --- |
-| Gate 0 — authorized host path | Partial | Pin selected Pixel/Android source branch; implement/audit service registration, caller authorization, SELinux, runtime ownership |
+| Gate 0 — authorized host path | Partial | Android 17 AVF display API, runtime Binder publisher, caller policy, and CarbonHV-owned SELinux/service/property contracts are pinned in source; compile the supplied product/policy integration in a controlled Android 17 product and build/install that `system_ext` image |
 | Gate 1 — actual hardware execution | Open | Boot a minimal ARM64 guest repeatedly through the real CarbonHV backend; verify vCPUs, timers, block, vsock, shutdown, cleanup |
-| Gate 2 — local graphics path | Open | Build a bootable ARM64 graphics guest, deploy the renderer in an authorized host context, connect AVF/crosvm virtio-gpu resources to that renderer, then prove hardware-rendered frames reach the Android surface with measured copy/fence behavior |
+| Gate 2 — local graphics path | Open | Build a bootable ARM64 graphics guest, install the Android 17 host integration, publish the broker-owned display generation before crosvm launch, then prove gfxstream-rendered guest frames reach the Android surface with measured copy/fence behavior |
 | Gate 3 — both starter guest ports | Open | Real GrapheneOS-derived and Ubuntu Touch images boot to genuine mobile shells, persist data, preserve declared confinement, and use qualified display/input |
 | Gate 4 — complete native product flow | Partial | Wire the app to live broker/bundle install/runtime; qualify text input, escape, recreation, return, accessibility |
 | Gate 5 — durable data/updates | Partial | Signed real-image update/backup/restore plus interruption/storage exhaustion/migration recovery tests |

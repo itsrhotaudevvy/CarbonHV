@@ -88,4 +88,11 @@ class SessionGeometryTest {
             decideReconnect(SessionIdentity("vm-1", 9), brokerLive = null),
         )
     }
+
+    @Test
+    fun session_identity_preserves_64_bit_runtime_generation() {
+        val identity = SessionIdentity("vm-long-lived", 5_000_000_000L)
+
+        assertEquals(5_000_000_000L, identity.generation)
+    }
 }

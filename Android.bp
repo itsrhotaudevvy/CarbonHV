@@ -1,0 +1,46 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+rust_library_rlib {
+    name: "libcarbon_core",
+    crate_name: "carbon_core",
+    srcs: ["crates/carbon-core/src/lib.rs"],
+    edition: "2024",
+    prefer_rlib: true,
+}
+
+rust_library_rlib {
+    name: "libcarbon_protocol",
+    crate_name: "carbon_protocol",
+    srcs: ["crates/carbon-protocol/src/lib.rs"],
+    edition: "2024",
+    prefer_rlib: true,
+    rustlibs: ["libcarbon_core"],
+}
+
+rust_library_rlib {
+    name: "libcarbon_broker",
+    crate_name: "carbon_broker",
+    srcs: ["crates/carbon-broker/src/lib.rs"],
+    edition: "2024",
+    prefer_rlib: true,
+    rustlibs: [
+        "dev.carbonhv.broker-rust",
+        "dev.carbonhv.host.runtime-rust",
+        "libbinder_rs",
+        "libcarbon_core",
+        "libcarbon_protocol",
+    ],
+}
+
+rust_binary {
+    name: "carbonhvd",
+    crate_name: "carbonhvd",
+    srcs: ["crates/carbon-broker/src/main.rs"],
+    edition: "2024",
+    rustlibs: ["libcarbon_broker"],
+    init_rc: ["host/carbonhvd.rc"],
+    compile_multilib: "64",
+    system_ext_specific: true,
+}

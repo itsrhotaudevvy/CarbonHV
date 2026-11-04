@@ -106,14 +106,14 @@ cargo run -q -p carbon-cli -- guest verify guest/android/device/cvd1.toml
 cargo run -q -p carbon-cli -- guest verify guest/ubuntu-touch/device/cvd1.toml
 ```
 
-`carbonhvd` is not yet a drop-in daemon for stock Android. The Rust crate supplies the broker policy model and AVF launch-plan boundary. Production integration must wire it into the selected Android platform release with authenticated platform IPC, fixed service identity, SELinux domains/labels, managed storage, and direct process spawning without a generic privileged shell.
+`carbonhvd` is not a drop-in daemon for stock Android. The repository now supplies a `system_ext` Soong module, a native `dev.carbonhv.broker` Binder service, the generated Rust client for `dev.carbonhv.host.runtime`, managed-storage labels, and CarbonHV-owned SELinux/service/property contexts. The ordinary UI binds only to the platform host integration; that service authenticates the UI signing certificate and forwards high-level lifecycle intent to `carbonhvd`. The daemon resolves managed objects, owns generation/display state, and calls the privileged host runtime for the actual AVF operation. These sources must still be included and compiled in a controlled Android 17 platform build.
 
 ## 5. Android application
 
 Run unit tests:
 
 ```bash
-./gradlew --no-daemon :android:domain:test :android:app:testDebugUnitTest
+./gradlew --no-daemon :android:domain:test :android:host-contract:test :android:app:testDebugUnitTest
 ```
 
 Build the debug APK:
@@ -165,7 +165,9 @@ The current probe verifies only:
 
 - ARM64 host ABI;
 - executable `/apex/com.android.virt/bin/vm`;
-- presence of `/dev/kvm`.
+- presence of `/dev/kvm`;
+- on hosts without KVM, presence of `/dev/gunyah`, Qualcomm's `qvirt` service and the output of `vm info`, reported as `hypervisor=gunyah`. Such a host exits `UNSUPPORTED` (status 3): Gunyah is not a qualified backend;
+- CPU `cpu_capacity` per core (the performance/efficiency split the broker uses to cap interactive vCPUs), the GPU identity (`Mali-*`, `Adreno (TM) ...`) and the Vulkan driver version.
 
 If those checks succeed, the probe reports hardware-virtualized CPU capability but intentionally leaves graphics `unverified` and returns `EXPERIMENTAL`. The following require later physical qualification with real guests:
 
@@ -178,13 +180,32 @@ If those checks succeed, the probe reports hardware-virtualized CPU capability b
 
 ## 8. Host platform integration
 
-The files under `host/` are templates for an integrated Android/AOSP build. They are not an installer for arbitrary stock Android devices.
+The files under `host/` are build inputs for an integrated Android/AOSP image. They are not an installer for arbitrary stock Android devices. CarbonHV-owned platform policy is defined by `carbonhvd.te`, `carbonhv_host_app.te`, `service_contexts`, `file_contexts`, `seapp_contexts`, and `property_contexts`; include them in the platform/private or equivalent controlled product policy for the pinned Android 17 branch. The reusable `host/product/carbonhv.mk` product fragment packages `carbonhvd` and `CarbonHvHostIntegration`, imports this directory through `SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS`, and sets the read-only UI-certificate property. It deliberately fails the product build unless `CARBONHV_UI_SIGNING_SHA256` is supplied by the controlled product configuration.
+
+The host app is platform-signed, installed as a privileged `system_ext` app, uses `android.uid.system` for the private VM object-store DAC boundary, and remains separate from the ordinary `dev.carbonhv` UI through its own SELinux domain and AIDL surface. Set `ro.carbonhv.ui_signing_sha256` in the controlled product to the ordinary UI APK certificate SHA-256 digest; an empty value rejects UI calls.
+
+For a development Android tree, use the staging helper rather than manually copying source and editing the product repeatedly:
+
+```bash
+host/product/prepare-controlled-host.sh \
+  --android-root /path/to/android-17 \
+  --product-makefile device/google/lynx/aosp_lynx.mk \
+  --ui-apk android/app/build/outputs/apk/debug/app-debug.apk \
+  --apksigner "$ANDROID_HOME/build-tools/<version>/apksigner"
+```
+
+The helper owns only `/path/to/android-17/external/carbonhv`; if that directory already contains unrelated files it fails closed. It stages a build-clean source snapshot, derives the UI certificate digest with `apksigner` (or accepts `--ui-signing-sha256`), and inserts one replaceable `CarbonHV controlled-host integration` block into the selected product makefile. Re-running the helper updates the staged source and digest without duplicating the product include. Because CarbonHV's narrow AVF bridge links `framework-virtualization.impl`, the helper also extends Android 17's existing implementation-library visibility by exactly `//external/carbonhv:__subpackages__`; unexpected upstream structure aborts preparation rather than widening private-framework visibility. CarbonHV's Android Rust modules use the same Rust 2024 edition as the Cargo workspace so host and platform builds do not compile the broker under different language editions.
+
+The connected Pixel 7a used for bring-up has an unlocked bootloader, but the current macOS/arm64 development host is not a supported GrapheneOS/AOSP full-build host. GrapheneOS documents x86_64 Linux with at least 32 GiB RAM for OS builds, so source integration can be prepared here while the actual `lynx` platform build must run in a compatible Linux/x86_64 environment.
+
+The Binder direction is explicit in policy: only `carbonhvd` publishes `dev.carbonhv.broker`, only `carbonhv_host_app` finds/calls it, only `carbonhv_host_app` publishes `dev.carbonhv.host.runtime`, and only `carbonhvd` finds/calls that runtime service.
 
 Before a host tuple can move beyond development status, integrate and review:
 
-- the broker service process and platform IPC/Binder registration;
+- the existing broker/host control path and process-death/reconnect behavior in the final product image;
+- the existing `dev.carbonhv.host.runtime` Binder registration and Rust client in the final product image;
 - caller identity and signing/permission relationship;
-- SELinux domains, labels, file ownership, and runtime directories;
+- compilation of the supplied SELinux domains, labels, file ownership, property context, and runtime directories against the exact host branch;
 - AVF/crosvm API and executable compatibility for the pinned host source revision;
 - service lifetime and process-death recovery;
 - renderer and GPU access policy;

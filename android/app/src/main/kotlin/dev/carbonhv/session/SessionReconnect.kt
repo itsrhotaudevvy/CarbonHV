@@ -2,7 +2,7 @@ package dev.carbonhv.session
 
 data class SessionIdentity(
     val instanceId: String,
-    val generation: Int,
+    val generation: Long,
 )
 
 enum class ReconnectDecision {
@@ -19,4 +19,3 @@ fun decideReconnect(
     requested == brokerLive -> ReconnectDecision.Attach
     else -> ReconnectDecision.Reconcile
 }
-

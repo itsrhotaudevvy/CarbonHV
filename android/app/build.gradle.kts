@@ -26,7 +26,14 @@ android {
     }
 
     buildFeatures {
+        aidl = true
         compose = true
+    }
+
+    sourceSets {
+        named("main") {
+            aidl.srcDir("../../host/android/aidl/ui")
+        }
     }
 
     packaging {
