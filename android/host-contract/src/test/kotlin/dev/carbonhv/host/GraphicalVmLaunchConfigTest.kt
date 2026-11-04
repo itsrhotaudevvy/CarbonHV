@@ -61,6 +61,11 @@ class GraphicalVmLaunchConfigTest {
         heightPixels = 2400,
         densityDpi = 420,
         refreshRate = 90,
+        performance = GraphicalVmPerformanceConfig(
+            hugePages = true,
+            boostUclamp = true,
+            balloon = true,
+        ),
     )
 
     private companion object {

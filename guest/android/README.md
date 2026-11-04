@@ -10,3 +10,7 @@ The default source ref tracks the GrapheneOS Android 17 development line used by
 
 The virtual product name is configurable with `CARBON_GRAPHENE_TARGET`. The initial bring-up target is `aosp_cf_arm64_phone`; if the pinned GrapheneOS tree renames or removes it, the port overlay under this directory must supply the equivalent CVD1 product before a release is built.
 
+## Kernel configuration
+
+The guest kernel must satisfy `carbonctl guest kernel-config`. Merge `guest/common/kernel/cvd1-near-native.fragment` and `guest/android/device/kernel.fragment` into the kernel config. Missing virtio-gpu or sync_file breaks the CVD1 contract (exit 3). Missing `CONFIG_CPUFREQ_VIRT`, THP, or balloon page reporting means the guest boots but cannot use the host's near-native plan (exit 5). On Snapdragon/Gunyah hosts the guest sees no SVE, MTE, or PMU; record that in the guest's security-difference matrix.
+Set `CARBON_GRAPHENE_KERNEL_CONFIG` to the prebuilt GKI kernel's config so `build.sh` verifies it and records it as `kernel.config`.

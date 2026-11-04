@@ -22,6 +22,9 @@ pub struct HostRuntimeGraphicalVmRequest {
     pub height_pixels: i32,
     pub density_dpi: i32,
     pub refresh_rate: i32,
+    pub huge_pages: bool,
+    pub boost_uclamp: bool,
+    pub balloon: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,6 +77,9 @@ impl HostRuntimeGraphicalVmRequest {
             height_pixels,
             density_dpi,
             refresh_rate,
+            huge_pages: plan.performance.huge_pages,
+            boost_uclamp: plan.performance.boost_uclamp,
+            balloon: plan.performance.balloon,
         })
     }
 }

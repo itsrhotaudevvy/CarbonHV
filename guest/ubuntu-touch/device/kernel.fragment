@@ -1,0 +1,3 @@
+# Ubuntu Touch CVD1 guest: AppArmor confinement is part of the Ubuntu Touch contract.
+CONFIG_SECURITY_APPARMOR=y
+CONFIG_DEFAULT_SECURITY_APPARMOR=y

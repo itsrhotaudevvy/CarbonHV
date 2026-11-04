@@ -15,4 +15,10 @@ parcelable GraphicalVmLaunchRequest {
     int heightPixels;
     int densityDpi;
     int refreshRate;
+    /** AVF VirtualMachineRawConfig.hugePages: advise THP for guest RAM. */
+    boolean hugePages;
+    /** AVF VirtualMachineRawConfig.boostUclamp: keep vCPU threads on performance cores. */
+    boolean boostUclamp;
+    /** AVF VirtualMachineRawConfig.balloon: free-page reporting back to the host. */
+    boolean balloon;
 }

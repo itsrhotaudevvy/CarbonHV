@@ -18,5 +18,8 @@ allow carbonhvd system_data_file:dir search;
 allow carbonhvd carbonhv_data_file:dir create_dir_perms;
 allow carbonhvd carbonhv_data_file:file create_file_perms;
 
+# Classify the host hypervisor (KVM vs Gunyah) from ro.boot.hypervisor.* at startup.
+get_prop(carbonhvd, hypervisor_prop)
+
 # crosvm receives already-opened descriptors for CarbonHV images. Do not grant open permission.
 allow crosvm_domain carbonhv_data_file:file { getattr read write ioctl lock };

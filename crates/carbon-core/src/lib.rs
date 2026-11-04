@@ -5,6 +5,7 @@ mod backup;
 mod bundle;
 mod graphics;
 mod guest;
+mod kernel_config;
 mod lifecycle;
 mod model;
 mod storage;
@@ -20,6 +21,10 @@ pub use graphics::{
     select_renderer,
 };
 pub use guest::{GuestContract, GuestContractError, GuestOsFamily};
+pub use kernel_config::{
+    KernelConfig, KernelConfigError, KernelConfigGap, KernelOptionValue, KernelRequirement,
+    KernelRequirementClass,
+};
 pub use lifecycle::{LifecycleAction, LifecycleError, LifecycleMachine};
 pub use model::{BundleRequirements, CpuArch, Generation, HostCapabilities, VmState};
 pub use storage::{

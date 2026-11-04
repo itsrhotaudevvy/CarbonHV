@@ -1,0 +1,29 @@
+# CarbonHV CVD1 guest kernel fragment shared by every guest family.
+# Verified by: carbonctl guest kernel-config <family> <base .config> <this> <family fragment>
+#
+# Contract: crosvm aarch64 exposes virtio devices on a generic PCI host bridge.
+CONFIG_PCI_HOST_GENERIC=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_CONSOLE=y
+CONFIG_VIRTIO_INPUT=y
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_VSOCKETS=y
+CONFIG_SND_VIRTIO=y
+# gfxstream rides on virtio-gpu; fences cross the boundary as sync_file/dma-buf.
+CONFIG_DRM_VIRTIO_GPU=y
+CONFIG_SYNC_FILE=y
+CONFIG_DMA_SHARED_BUFFER=y
+
+# Near-native: the guest governor drives host frequency through crosvm's upstream
+# virtual cpufreq device (qemu,virtual-cpufreq, --virt-cpufreq-upstream).
+CONFIG_CPU_FREQ=y
+CONFIG_CPU_FREQ_GOV_SCHEDUTIL=y
+CONFIG_CPU_FREQ_DEFAULT_GOV_SCHEDUTIL=y
+CONFIG_CPUFREQ_VIRT=y
+# Fewer TLB misses for large guest working sets; host advises THP with --hugepages.
+CONFIG_TRANSPARENT_HUGEPAGE=y
+CONFIG_TRANSPARENT_HUGEPAGE_MADVISE=y
+# Free-page reporting returns idle guest memory to Android (--balloon-page-reporting).
+CONFIG_VIRTIO_BALLOON=y
+CONFIG_PAGE_REPORTING=y

@@ -2,8 +2,9 @@ use std::fs;
 use std::path::PathBuf;
 
 use carbon_broker::{
-    AvfBackend, AvfGraphicsConfig, AvfInputConfig, BackendError, HostVirtualizationClass,
-    ProgramInvocation, ValidatedVmDisk, ValidatedVmSpec,
+    AvfBackend, AvfGraphicsConfig, AvfInputConfig, AvfPerformanceConfig, BackendError,
+    HostVirtualizationClass, HypervisorKind, HypervisorProperties, ProgramInvocation,
+    ValidatedVmDisk, ValidatedVmSpec,
 };
 use carbon_core::Generation;
 
@@ -233,4 +234,83 @@ fn kvm_takes_precedence_over_gunyah_and_absent_gunyah_stays_unavailable() {
     let probe = neither.probe();
     assert!(!probe.gunyah_present);
     assert_eq!(probe.class, HostVirtualizationClass::Unavailable);
+}
+
+fn gunyah_host(name: &str) -> AvfBackend {
+    let root = temp_root(name);
+    fs::write(root.join("vm"), b"tool").unwrap();
+    fs::write(root.join("gunyah"), b"device").unwrap();
+    AvfBackend::new(root.join("vm"), root.join("kvm")).with_gunyah_device(root.join("gunyah"))
+}
+
+#[test]
+fn stock_snapdragon_properties_keep_gunyah_without_backend() {
+    // Redmi kunzite stock build: AVF answers "VMs are not supported".
+    let probe = gunyah_host("gunyah-stock").probe_with_properties(&HypervisorProperties {
+        vm_supported: Some(false),
+        protected_vm_supported: Some(false),
+        version: None,
+    });
+    assert_eq!(probe.hypervisor, HypervisorKind::Gunyah);
+    assert_eq!(probe.class, HostVirtualizationClass::GunyahWithoutBackend);
+}
+
+#[test]
+fn controlled_gunyah_build_declaring_vm_support_is_avf_ready() {
+    let probe = gunyah_host("gunyah-controlled").probe_with_properties(&HypervisorProperties {
+        vm_supported: Some(true),
+        protected_vm_supported: Some(false),
+        version: Some("gunyah-v2".into()),
+    });
+    assert_eq!(probe.hypervisor, HypervisorKind::Gunyah);
+    assert_eq!(probe.class, HostVirtualizationClass::GunyahAvfReady);
+}
+
+#[test]
+fn gunyah_readiness_requires_an_explicit_yes_and_a_consistent_hypervisor_name() {
+    let unknown = gunyah_host("gunyah-unknown").probe_with_properties(&HypervisorProperties {
+        vm_supported: None,
+        ..Default::default()
+    });
+    assert_eq!(unknown.class, HostVirtualizationClass::GunyahWithoutBackend);
+
+    let mismatched = gunyah_host("gunyah-mismatch").probe_with_properties(&HypervisorProperties {
+        vm_supported: Some(true),
+        protected_vm_supported: None,
+        version: Some("kvm.arm-protected".into()),
+    });
+    assert_eq!(
+        mismatched.class,
+        HostVirtualizationClass::GunyahWithoutBackend
+    );
+}
+
+#[test]
+fn android_property_booleans_are_parsed_strictly() {
+    assert_eq!(HypervisorProperties::parse_bool("1\n"), Some(true));
+    assert_eq!(HypervisorProperties::parse_bool("true"), Some(true));
+    assert_eq!(HypervisorProperties::parse_bool("0"), Some(false));
+    assert_eq!(HypervisorProperties::parse_bool(""), None);
+    assert_eq!(HypervisorProperties::parse_bool("yes"), None);
+}
+
+#[test]
+fn graphical_platform_plan_carries_near_native_avf_tunables() {
+    let plan = AvfBackend::new(
+        PathBuf::from("/apex/com.android.virt/bin/vm"),
+        PathBuf::from("/dev/kvm"),
+    )
+    .build_graphics_platform_plan(
+        &spec(),
+        AvfGraphicsConfig::gfxstream_vulkan(1080, 2400, 420, 90).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        plan.performance,
+        AvfPerformanceConfig {
+            huge_pages: true,
+            boost_uclamp: true,
+            balloon: true,
+        }
+    );
 }

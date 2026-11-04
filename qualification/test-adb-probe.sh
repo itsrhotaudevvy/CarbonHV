@@ -22,6 +22,22 @@ case "$query" in
   *"ro.hardware.vulkan"*)
     if [[ "${FAKE_HOST:-pixel}" == snapdragon ]]; then printf 'adreno\n'; else printf 'mali\n'; fi
     ;;
+  *"ls -Z /dev/gunyah"*)
+    if [[ "${FAKE_HOST:-pixel}" == snapdragon ]]; then printf 'crw-rw---- 1 system system u:object_r:gunyah_device:s0 10, 55 2026-09-30 /dev/gunyah\n'; fi
+    ;;
+  *"ro.boot.hypervisor.vm.supported"*)
+    if [[ "${FAKE_HOST:-pixel}" == snapdragon ]]; then printf '%s\n' "${FAKE_VM_SUPPORTED:-}"; else printf '1\n'; fi
+    ;;
+  *"ro.boot.hypervisor.protected_vm.supported"*)
+    if [[ "${FAKE_HOST:-pixel}" == snapdragon ]]; then printf '\n'; else printf '1\n'; fi
+    ;;
+  *"ro.boot.hypervisor.version"*)
+    if [[ "${FAKE_HOST:-pixel}" == snapdragon ]]; then printf '%s\n' "${FAKE_HV_VERSION:-}"; else printf 'kvm.arm-protected\n'; fi
+    ;;
+  *"cpufreq/policy"*)
+    if [[ "${FAKE_HOST:-pixel}" == snapdragon ]]; then printf '0 1 2 3\n4 5 6 7\n'; else printf '0 1 2 3\n4 5\n6 7\n'; fi
+    ;;
+  *"transparent_hugepage"*) printf 'always [madvise] never\n' ;;
   *"/dev/gunyah"*)
     if [[ "${FAKE_HOST:-pixel}" == snapdragon ]]; then printf 'yes\n'; else printf 'no\n'; fi
     ;;
@@ -118,11 +134,30 @@ grep -Fq 'avf_vm_info=VMs are not supported.' <<<"$gunyah_output"
 grep -Fq 'cpu_capacities=405,405,405,405,1024,1024,1024,1024' <<<"$gunyah_output"
 grep -Fq 'display_modes=1080x2392@120.00001,90.0,60.000004' <<<"$gunyah_output"
 grep -Fq 'qualification=UNSUPPORTED' <<<"$gunyah_output"
-grep -Fq 'reason=Gunyah hypervisor present but AVF has no KVM' <<<"$gunyah_output"
+grep -Fq 'reason=Gunyah hypervisor present but this build does not declare AVF VM support' <<<"$gunyah_output"
+grep -Fq 'grant crosvm u:object_r:gunyah_device:s0' <<<"$gunyah_output"
+grep -Fq 'hypervisor_vm_supported=unset' <<<"$gunyah_output"
+grep -Fq 'gunyah_selinux_label=u:object_r:gunyah_device:s0' <<<"$gunyah_output"
+grep -Fq 'avf_gunyah_path=blocked:ro.boot.hypervisor.vm.supported=unset' <<<"$gunyah_output"
+grep -Fq 'cpu_freq_domains=0,1,2,3;4,5,6,7' <<<"$gunyah_output"
+grep -Fq 'thp_mode=madvise' <<<"$gunyah_output"
 ! grep -Fq 'qualification=READY' <<<"$gunyah_output"
 ! grep -Fq 'cpu=hardware-virtualized' <<<"$gunyah_output"
 
+# A controlled Snapdragon build that declares AVF VM support is EXPERIMENTAL, never READY.
+set +e
+declared_output="$(FAKE_HOST=snapdragon FAKE_VM_SUPPORTED=1 FAKE_HV_VERSION=gunyah PATH="$tmp_dir:$PATH" "$qualify" --adb fake-serial 2>&1)"
+declared_status=$?
+set -e
+test "$declared_status" -eq 4
+grep -Fq 'avf_gunyah_path=declared' <<<"$declared_output"
+grep -Fq 'qualification=EXPERIMENTAL' <<<"$declared_output"
+grep -Fq 'reason=Gunyah AVF path declared' <<<"$declared_output"
+! grep -Fq 'qualification=READY' <<<"$declared_output"
+
 # The KVM Pixel fixture must report its hypervisor as kvm and stay EXPERIMENTAL.
+grep -Fq 'avf_gunyah_path=not-applicable' <<<"$output"
+grep -Fq 'cpu_freq_domains=0,1,2,3;4,5;6,7' <<<"$output"
 grep -Fq 'hypervisor=kvm' <<<"$output"
 grep -Fq 'gunyah_device=no' <<<"$output"
 

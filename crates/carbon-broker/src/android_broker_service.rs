@@ -11,7 +11,8 @@ use dev_carbonhv_broker::aidl::dev::carbonhv::broker::{
 use crate::{
     AndroidHostRuntimeError, AvfBackend, BackendError, BrokerControlError, BrokerControlPlane,
     BrokerPolicy, GraphicalRuntimeError, GraphicalStartIntent, HostResources,
-    HostRuntimeRequestError, LazyAndroidHostRuntimePublisher, RuntimeError, StarterBundleError,
+    HostRuntimeRequestError, HypervisorProperties, LazyAndroidHostRuntimePublisher, RuntimeError,
+    StarterBundleError,
 };
 
 const BROKER_SERVICE: &str = "dev.carbonhv.broker";
@@ -19,6 +20,20 @@ const SYSTEM_UID: u32 = 1000;
 const INTERNAL_CALLER_DIGEST: &str = "carbonhv-host-bridge";
 const MANAGED_ROOT: &str = "/data/misc/carbonhv/objects";
 const GUNYAH_DEVICE: &str = "/dev/gunyah";
+
+/// Reads the `ro.boot.hypervisor.*` facts that decide whether AVF can run VMs on this host.
+fn hypervisor_properties() -> HypervisorProperties {
+    let read = |name: &str| rustutils::system_properties::read(name).ok().flatten();
+    HypervisorProperties {
+        vm_supported: read("ro.boot.hypervisor.vm.supported")
+            .as_deref()
+            .and_then(HypervisorProperties::parse_bool),
+        protected_vm_supported: read("ro.boot.hypervisor.protected_vm.supported")
+            .as_deref()
+            .and_then(HypervisorProperties::parse_bool),
+        version: read("ro.boot.hypervisor.version"),
+    }
+}
 
 pub fn run_android_broker_service() -> Result<(), String> {
     ProcessState::set_thread_pool_max_thread_count(4);
@@ -43,14 +58,22 @@ pub fn run_android_broker_service() -> Result<(), String> {
         }
     }
 
+    let backend = AvfBackend::new(
+        PathBuf::from("/apex/com.android.virt/bin/vm"),
+        PathBuf::from("/dev/kvm"),
+    )
+    .with_gunyah_device(PathBuf::from(GUNYAH_DEVICE));
+    let probe = backend.probe_with_properties(&hypervisor_properties());
+    // Recorded for diagnostics; AVF itself still refuses VMs on a host that is not ready.
+    eprintln!(
+        "carbonhvd: hypervisor={:?} class={:?} max_vcpus={} max_memory_mib={}",
+        probe.hypervisor, probe.class, policy.max_vcpus, policy.max_memory_mib
+    );
+
     let service = CarbonHvBrokerService {
         control: BrokerControlPlane::new(
             policy,
-            AvfBackend::new(
-                PathBuf::from("/apex/com.android.virt/bin/vm"),
-                PathBuf::from("/dev/kvm"),
-            )
-            .with_gunyah_device(PathBuf::from(GUNYAH_DEVICE)),
+            backend,
             LazyAndroidHostRuntimePublisher::default(),
             CallerIdentity {
                 uid: SYSTEM_UID,

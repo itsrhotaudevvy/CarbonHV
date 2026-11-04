@@ -6,3 +6,7 @@ The preferred CVD1 adaptation uses direct virtio Linux devices. `build.sh` assem
 
 Release automation must supply `UT_ROOTFS_TARBALL`, `UT_ROOTFS_SHA256`, `UT_KERNEL_IMAGE`, and `UT_INITRD_IMAGE` from a pinned source/build pipeline. The assembler refuses an unverified rootfs.
 
+## Kernel configuration
+
+The guest kernel must satisfy `carbonctl guest kernel-config`. Merge `guest/common/kernel/cvd1-near-native.fragment` and `guest/ubuntu-touch/device/kernel.fragment` into the kernel config. Missing virtio-gpu or sync_file breaks the CVD1 contract (exit 3). Missing `CONFIG_CPUFREQ_VIRT`, THP, or balloon page reporting means the guest boots but cannot use the host's near-native plan (exit 5). On Snapdragon/Gunyah hosts the guest sees no SVE, MTE, or PMU; record that in the guest's security-difference matrix.
+`build.sh` requires `UT_KERNEL_CONFIG`, the exact `.config` `UT_KERNEL_IMAGE` was built from, and refuses one that fails verification.

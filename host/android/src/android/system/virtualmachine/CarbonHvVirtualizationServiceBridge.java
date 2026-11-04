@@ -42,6 +42,9 @@ public final class CarbonHvVirtualizationServiceBridge {
             String gpuBackend,
             String[] gpuContextTypes,
             String gpuRendererFeatures,
+            boolean hugePages,
+            boolean boostUclamp,
+            boolean balloon,
             ParcelFileDescriptor touchGuestSocket,
             ParcelFileDescriptor keyGuestSocket,
             ParcelFileDescriptor mouseGuestSocket)
@@ -127,6 +130,11 @@ public final class CarbonHvVirtualizationServiceBridge {
                     InputDevice.mouse(mouse),
                 };
         rawConfig.networkSupported = false;
+        // Performance fields come from the broker's plan. AVF cannot pin vCPUs, so near-native
+        // sessions keep vCPU threads on performance cores through uclamp boosting instead.
+        rawConfig.hugePages = hugePages;
+        rawConfig.boostUclamp = boostUclamp;
+        rawConfig.balloon = balloon;
         return rawConfig;
     }
 

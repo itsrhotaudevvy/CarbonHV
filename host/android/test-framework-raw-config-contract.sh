@@ -22,4 +22,14 @@ grep -q 'VirtualMachineRawConfig buildRawConfig' "$bridge"
 grep -q '\.toVsRawConfig()' "$bridge"
 grep -q 'rawConfig.inputDevices' "$bridge"
 
+# Broker-planned performance fields must reach the AVF raw config, not be dropped at the bridge.
+grep -q 'rawConfig.hugePages = hugePages;' "$bridge"
+grep -q 'rawConfig.boostUclamp = boostUclamp;' "$bridge"
+grep -q 'rawConfig.balloon = balloon;' "$bridge"
+grep -q 'config.performance.boostUclamp' "$backend"
+aidl="$repo_root/host/android/aidl/runtime/dev/carbonhv/host/GraphicalVmLaunchRequest.aidl"
+grep -q 'boolean hugePages;' "$aidl"
+grep -q 'boolean boostUclamp;' "$aidl"
+grep -q 'boolean balloon;' "$aidl"
+
 echo "framework-owned raw-config contract: PASS"

@@ -1,0 +1,2 @@
+# GrapheneOS-derived CVD1 guest: SELinux must be built in and enforcing.
+CONFIG_SECURITY_SELINUX=y

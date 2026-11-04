@@ -63,6 +63,7 @@ grep -Fq 'add_service(carbonhvd, carbonhv_broker_service)' "$daemon_policy"
 grep -Fq 'allow carbonhvd carbonhv_data_file:dir create_dir_perms;' "$daemon_policy"
 grep -Fq 'allow carbonhvd carbonhv_data_file:file create_file_perms;' "$daemon_policy"
 grep -Fq 'allow crosvm_domain carbonhv_data_file:file { getattr read write ioctl lock };' "$daemon_policy"
+grep -Fq 'get_prop(carbonhvd, hypervisor_prop)' "$daemon_policy"
 
 grep -Fq 'mkdir /data/misc/carbonhv 0770 system system' "$init_rc"
 grep -Fq 'restorecon_recursive /data/misc/carbonhv' "$init_rc"

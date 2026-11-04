@@ -33,6 +33,17 @@ fi
 m -j"$JOBS" bootimage systemimage target-files-package
 
 PRODUCT_OUT="${ANDROID_PRODUCT_OUT:?Android build did not set ANDROID_PRODUCT_OUT}"
+
+# The CVD1 product ships a prebuilt GKI kernel; verify the exact config it was built from.
+if [[ -n "${CARBON_GRAPHENE_KERNEL_CONFIG:-}" ]]; then
+  if ! "${CARBONCTL:-carbonctl}" guest kernel-config android "$CARBON_GRAPHENE_KERNEL_CONFIG"; then
+    echo "CARBON_GRAPHENE_KERNEL_CONFIG does not meet CVD1 near-native requirements" >&2
+    exit 3
+  fi
+  cp "$CARBON_GRAPHENE_KERNEL_CONFIG" "$OUTPUT/kernel.config"
+else
+  echo "warning: CARBON_GRAPHENE_KERNEL_CONFIG unset; release automation must verify the guest kernel config" >&2
+fi
 cp "$PRODUCT_OUT/boot.img" "$OUTPUT/boot.img"
 cp "$PRODUCT_OUT/system.img" "$OUTPUT/system.img"
 repo manifest -r -o "$OUTPUT/source-manifest.xml"
