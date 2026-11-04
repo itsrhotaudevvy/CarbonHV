@@ -11,5 +11,5 @@ native-gfxstream = ["dep:magma-gpu", "dep:rutabaga_gfx", "rutabaga_gfx/gfxstream
 
 [dependencies]
 carbon-core = { path = "../carbon-core" }
-magma-gpu = { version = "=0.1.80", optional = true }
+magma-gpu = { version = "=0.1.85", optional = true }
 rutabaga_gfx = { version = "=0.1.80", optional = true }

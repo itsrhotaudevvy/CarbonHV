@@ -85,9 +85,9 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "magma-gpu"
-version = "0.1.80"
+version = "0.1.85"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "002536499cb45b3509c179f42f8c48729364931668f5a2c1bef8c407addaa629"
+checksum = "c19b363d05adbb8ca246d50b7d8dcac70003f7f429b52beebe7ce0d51cb39fd7"
 dependencies = [
  "cfg-if",
  "libc",
