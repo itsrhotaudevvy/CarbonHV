@@ -5,6 +5,11 @@ service carbonhvd /system_ext/bin/carbonhvd
     disabled
     oneshot
 
+on post-fs-data
+    mkdir /data/misc/carbonhv 0770 system system
+    mkdir /data/misc/carbonhv/objects 0770 system system
+    mkdir /data/misc/carbonhv/runtime 0770 system system
+    restorecon_recursive /data/misc/carbonhv
+
 on property:sys.boot_completed=1
     start carbonhvd
-

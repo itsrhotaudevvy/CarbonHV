@@ -3,6 +3,7 @@ use carbon_core::{GpuHostCapabilities, GpuRendererProfile, GraphicsCapability};
 use crate::RutabagaConfig;
 
 pub const GFXSTREAM_MALI_ENTRY_POINT: &str = "rutabaga-gfxstream";
+pub const GFXSTREAM_ADRENO_ENTRY_POINT: &str = "rutabaga-gfxstream";
 pub const AVF_CROSVM_OWNER: &str = "avf-crosvm";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -68,5 +69,16 @@ pub fn gfxstream_vulkan_mali_backend() -> RendererBackendProfile {
             allow_gpu_device: true,
         },
         rutabaga: RutabagaConfig::gfxstream_vulkan(),
+    }
+}
+
+pub fn gfxstream_vulkan_adreno_backend() -> RendererBackendProfile {
+    RendererBackendProfile {
+        profile: GpuRendererProfile::gfxstream_vulkan_adreno(),
+        integration: RendererIntegrationPoint {
+            owner: AVF_CROSVM_OWNER,
+            backend: GFXSTREAM_ADRENO_ENTRY_POINT,
+        },
+        ..gfxstream_vulkan_mali_backend()
     }
 }

@@ -2,8 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use carbon_broker::{
-    AvfBackend, AvfGraphicsConfig, BackendError, HostVirtualizationClass, ProgramInvocation,
-    ValidatedVmDisk, ValidatedVmSpec,
+    AvfBackend, AvfGraphicsConfig, AvfInputConfig, BackendError, HostVirtualizationClass,
+    ProgramInvocation, ValidatedVmDisk, ValidatedVmSpec,
 };
 use carbon_core::Generation;
 
@@ -43,8 +43,10 @@ fn builds_exact_argv_without_shell_interpolation() {
     let vm_tool = root.join("vm");
     fs::write(&vm_tool, b"tool").unwrap();
     let backend = AvfBackend::new(vm_tool.clone(), root.join("kvm"));
+    let mut value = spec();
+    value.vcpus = 1;
     let plan = backend
-        .build_launch_plan(&spec(), PathBuf::from("/data/misc/carbonhv/runtime"))
+        .build_launch_plan(&value, PathBuf::from("/data/misc/carbonhv/runtime"))
         .unwrap();
 
     assert_eq!(
@@ -68,54 +70,86 @@ fn builds_exact_argv_without_shell_interpolation() {
     assert!(plan.config_json.contains(
         "\"disks\":[{\"image\":\"/data/misc/carbonhv/objects/system-a\",\"writable\":false,\"partitions\":[]},{\"image\":\"/data/misc/carbonhv/objects/data-a\",\"writable\":true,\"partitions\":[]}]"
     ));
+    assert!(plan.config_json.contains("\"platform_version\":\"~1.0\""));
+    assert!(plan.config_json.contains("\"cpu_topology\":\"one_cpu\""));
+    assert!(!plan.config_json.contains("\"vcpus\""));
+    assert!(!plan.config_json.contains("\"gpu\""));
+    assert!(!plan.config_json.contains("\"display\""));
+    assert!(!plan.config_json.contains("\"input\""));
     assert!(!plan.config_json.contains("sh -c"));
 }
 
 #[test]
-fn graphics_launch_plan_uses_android17_gfxstream_and_native_input_contract() {
+fn graphical_launch_plan_uses_android17_platform_binder_contract() {
     let root = temp_root("graphics");
     let vm_tool = root.join("vm");
     fs::write(&vm_tool, b"tool").unwrap();
     let backend = AvfBackend::new(vm_tool, root.join("kvm"));
-    let graphics = AvfGraphicsConfig::gfxstream_vulkan(1080, 2400, 90).unwrap();
+    let graphics = AvfGraphicsConfig::gfxstream_vulkan(1080, 2400, 420, 90).unwrap();
     let plan = backend
-        .build_graphics_launch_plan(
-            &spec(),
-            PathBuf::from("/data/misc/carbonhv/runtime"),
-            graphics,
-        )
+        .build_graphics_platform_plan(&spec(), graphics)
         .unwrap();
 
-    assert!(plan.config_json.contains("\"backend\":\"gfxstream\""));
-    assert!(plan.config_json.contains("\"renderer_use_egl\":false"));
-    assert!(plan.config_json.contains("\"renderer_use_gles\":false"));
-    assert!(plan.config_json.contains("\"renderer_use_glx\":false"));
-    assert!(
-        plan.config_json
-            .contains("\"renderer_use_surfaceless\":true")
+    assert_eq!(plan.platform_version, "~1.0");
+    assert_eq!(plan.memory_mib, 4096);
+    assert_eq!(plan.vcpus, 4);
+    assert_eq!(plan.gpu.backend, "gfxstream");
+    assert_eq!(
+        plan.gpu.context_types,
+        vec!["gfxstream-vulkan", "gfxstream-composer"]
     );
-    assert!(plan.config_json.contains("\"renderer_use_vulkan\":true"));
-    assert!(
-        plan.config_json
-            .contains("\"context_types\":[\"gfxstream-vulkan\",\"gfxstream-composer\"]")
+    assert!(!plan.gpu.renderer_use_egl);
+    assert!(!plan.gpu.renderer_use_gles);
+    assert!(!plan.gpu.renderer_use_glx);
+    assert!(plan.gpu.renderer_use_surfaceless);
+    assert!(plan.gpu.renderer_use_vulkan);
+    assert_eq!(
+        plan.gpu.renderer_features,
+        "VulkanDisableCoherentMemoryAndEmulate:enabled;VulkanAllocateHostVisibleAsUdmabuf:enabled;ExternalBlob:enabled"
     );
-    assert!(plan.config_json.contains(
-        "\"display\":{\"width_pixels\":1080,\"height_pixels\":2400,\"refresh_rate\":90}"
-    ));
-    assert!(plan.config_json.contains(
-        "\"input\":{\"touchscreen\":true,\"keyboard\":true,\"mouse\":true,\"trackpad\":false,\"switches\":false}"
-    ));
+    assert_eq!(plan.display.width_pixels, 1080);
+    assert_eq!(plan.display.height_pixels, 2400);
+    assert_eq!(plan.display.density_dpi, 420);
+    assert_eq!(plan.display.refresh_rate, 90);
+    assert_eq!(
+        plan.input,
+        AvfInputConfig {
+            multitouch: true,
+            keyboard: true,
+            mouse: true,
+        }
+    );
+    assert!(
+        plan.kernel_params
+            .iter()
+            .any(|value| value == "gfxstream_enabled")
+    );
 }
 
 #[test]
 fn graphics_config_rejects_invalid_geometry_or_refresh_rate() {
     assert_eq!(
-        AvfGraphicsConfig::gfxstream_vulkan(0, 2400, 90),
+        AvfGraphicsConfig::gfxstream_vulkan(0, 2400, 420, 90),
         Err(BackendError::InvalidGraphicsConfig),
     );
     assert_eq!(
-        AvfGraphicsConfig::gfxstream_vulkan(1080, 2400, 0),
+        AvfGraphicsConfig::gfxstream_vulkan(1080, 2400, 420, 0),
         Err(BackendError::InvalidGraphicsConfig),
+    );
+    assert_eq!(
+        AvfGraphicsConfig::gfxstream_vulkan(1080, 2400, 0, 90),
+        Err(BackendError::InvalidGraphicsConfig),
+    );
+}
+
+#[test]
+fn headless_vm_tool_path_rejects_unrepresentable_vcpu_count() {
+    let root = temp_root("headless-vcpus");
+    let backend = AvfBackend::new(root.join("vm"), root.join("kvm"));
+
+    assert_eq!(
+        backend.build_launch_plan(&spec(), root.join("runtime")),
+        Err(BackendError::UnsupportedCliVcpuCount { requested: 4 })
     );
 }
 
@@ -124,6 +158,7 @@ fn escapes_json_control_characters_without_creating_shell_syntax() {
     let root = temp_root("json");
     let backend = AvfBackend::new(root.join("vm"), root.join("kvm"));
     let mut value = spec();
+    value.vcpus = 1;
     value.kernel_params = vec!["androidboot.foo=quote\\\"value".into()];
     let plan = backend
         .build_launch_plan(&value, root.join("runtime"))
@@ -164,4 +199,38 @@ fn launch_plan_rejects_runtime_directory_with_parent_components() {
         backend.build_launch_plan(&spec(), PathBuf::from("/data/misc/carbonhv/../tmp")),
         Err(BackendError::UnsafeRuntimeDirectory)
     );
+}
+
+#[test]
+fn gunyah_host_without_kvm_is_reported_distinctly_and_never_ready() {
+    let root = temp_root("gunyah");
+    fs::write(root.join("vm"), b"tool").unwrap();
+    fs::write(root.join("gunyah"), b"device").unwrap();
+    let backend =
+        AvfBackend::new(root.join("vm"), root.join("kvm")).with_gunyah_device(root.join("gunyah"));
+
+    let probe = backend.probe();
+    assert!(probe.gunyah_present);
+    assert!(!probe.kvm_present);
+    assert_eq!(probe.class, HostVirtualizationClass::GunyahWithoutBackend);
+}
+
+#[test]
+fn kvm_takes_precedence_over_gunyah_and_absent_gunyah_stays_unavailable() {
+    let root = temp_root("kvm-and-gunyah");
+    fs::write(root.join("vm"), b"tool").unwrap();
+    fs::write(root.join("kvm"), b"device").unwrap();
+    fs::write(root.join("gunyah"), b"device").unwrap();
+    let both =
+        AvfBackend::new(root.join("vm"), root.join("kvm")).with_gunyah_device(root.join("gunyah"));
+    assert_eq!(
+        both.probe().class,
+        HostVirtualizationClass::DevelopmentReady
+    );
+
+    let neither = AvfBackend::new(root.join("vm"), root.join("nokvm"))
+        .with_gunyah_device(root.join("nogunyah"));
+    let probe = neither.probe();
+    assert!(!probe.gunyah_present);
+    assert_eq!(probe.class, HostVirtualizationClass::Unavailable);
 }

@@ -37,4 +37,4 @@ gpu.sustained=false
 gpu.qualified=false
 qualification=EXPERIMENTAL
 sustained_status=BLOCKED
-blocker=missing-out/grapheneos/boot.img,missing-out/grapheneos/system.img,carbon-renderer-not-installed,avf-renderer-resource-transport-not-wired
+blocker=missing-out/grapheneos/boot.img,missing-out/grapheneos/system.img,carbonhv-host-integration-not-installed,carbonhvd-runtime-session-publication-not-wired

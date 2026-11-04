@@ -34,16 +34,27 @@ Current Rust policy code exercises these invariants:
 - the AVF backend produces a fixed executable path plus argv/config data and never constructs a shell command;
 - unsupported/missing hardware requirements fail closed rather than enabling CPU emulation.
 
-Still required for a production Android host integration:
+Implemented source-level Android host controls now include:
 
-- authenticated Binder/platform IPC registration tied to platform identity/signing policy;
-- enforcing SELinux policy compiled against the selected host branch;
-- least-privilege runtime UID/GID, file labels, and private runtime directories;
+- a fixed `dev.carbonhv.broker` service-manager label published only by `carbonhvd` and discoverable/callable only by `carbonhv_host_app`;
+- a fixed `dev.carbonhv.host.runtime` service-manager label with a single allowed service publisher;
+- a dedicated `carbonhv_host_app` SELinux domain for the platform-signed privileged host APK;
+- daemon-only service-manager discovery plus Binder calls from `carbonhvd` to that host runtime;
+- UI certificate authentication in the host integration before lifecycle/query requests are forwarded to the Rust broker;
+- broker-owned starter-bundle resolution, generations, display ownership, resource admission, start/stop ordering, and exact-generation runtime-death reconciliation;
+- a typed read-only `ro.carbonhv.ui_signing_sha256` property used by the host caller policy;
+- `/data/misc/carbonhv` file labeling and `system:system` DAC ownership, with the ordinary UI APK outside that boundary;
+- crosvm access to already-opened CarbonHV image descriptors without permission to open the managed files by pathname.
+
+Still required before these controls count as production host security:
+
+- compile and enforce the supplied policy in the exact Android 17 product policy, then audit denials and resulting expanded macros;
+- build/install the broker and host-integration modules in that product and verify their service-manager/Binder labels on-device;
 - race-resistant file opening and descriptor ownership in the real service process;
 - syscall/process sandboxing where the selected AVF/runtime stack permits it;
 - explicit process lifetime/reconnect behavior across host service death and updates.
 
-`host/carbonhvd.rc` and `host/carbonhvd.te` are review templates, not proof that these controls are installed on a device.
+The checked-in policy and init files are build inputs, not proof that they are installed or enforcing on a device. Physical qualification still requires a controlled host image containing them.
 
 ## 3. Bundle and guest trust
 

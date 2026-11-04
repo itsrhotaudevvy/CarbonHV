@@ -17,5 +17,5 @@ dependencyResolutionManagement {
 rootProject.name = "CarbonHV"
 
 include(":android:domain")
+include(":android:host-contract")
 include(":android:app")
-

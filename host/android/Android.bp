@@ -1,0 +1,60 @@
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+android_app {
+    name: "CarbonHvHostIntegration",
+    manifest: "AndroidManifest.xml",
+    srcs: [
+        "src/**/*.kt",
+        "src/**/*.java",
+        "common/**/*.kt",
+        "aidl/ui/**/*.aidl",
+    ],
+    static_libs: [
+        "dev.carbonhv.broker-java",
+        "dev.carbonhv.host.runtime-java",
+        "android.system.virtualizationservice-java",
+        "android.system.virtualizationservice_internal-java",
+        "libcrosvm_android_display_service-java",
+    ],
+    libs: [
+        "framework-virtualization.impl",
+    ],
+    platform_apis: true,
+    privileged: true,
+    certificate: "platform",
+    system_ext_specific: true,
+}
+
+aidl_interface {
+    name: "dev.carbonhv.broker",
+    srcs: ["aidl/broker/**/*.aidl"],
+    local_include_dir: "aidl/broker",
+    unstable: true,
+    backend: {
+        java: {
+            enabled: true,
+            sdk_version: "module_current",
+        },
+        rust: {
+            enabled: true,
+        },
+    },
+}
+
+aidl_interface {
+    name: "dev.carbonhv.host.runtime",
+    srcs: ["aidl/runtime/**/*.aidl"],
+    local_include_dir: "aidl/runtime",
+    unstable: true,
+    backend: {
+        java: {
+            enabled: true,
+            sdk_version: "module_current",
+        },
+        rust: {
+            enabled: true,
+        },
+    },
+}

@@ -30,6 +30,8 @@ qualification/gpu/run-minimal.sh \
   --output qualification/gpu/reports/<run>.txt
 ```
 
+Supported `--renderer` values are `gfxstream-vulkan-mali` (host GPU must be `Mali-*`) and `gfxstream-vulkan-adreno` (host GPU must be `Adreno*`); a profile that does not match the host GPU exits `65`. The preflight tolerates a host that fails virtualization admission, such as a Gunyah-only Snapdragon phone, and records it as a `host-virtualization-unsupported-<hypervisor>` blocker; `--evidence` mode stays strict. The sustained entrypoint (`run-sustained.sh`) is still Pixel 7a / Mali only. Fixture coverage: `test-minimal-preflight.sh`.
+
 If required guest artifacts, renderer deployment, or AVF renderer transport are missing, this form exits with the experimental status code `4`, emits `bringup_status=BLOCKED`, and keeps every GPU capability false. It is intended to make an incomplete physical attempt reproducible without turning host facts into acceleration claims.
 
 The physical path does not accept host-only Android rendering as guest proof. `guest_gpu_transport=virtio-gpu`, a guest workload result, renderer identity, presentation counts, copy inventory, and a host-GPU proof source all come from the VM/renderer run.

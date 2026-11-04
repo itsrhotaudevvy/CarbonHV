@@ -39,6 +39,17 @@ impl GpuRendererProfile {
         }
     }
 
+    /// Adreno is a host provider/profile only: the guest still sees CVD1 `virtio-gpu`.
+    /// Starts from the same gfxstream/Vulkan transport as Mali; Venus remains a candidate to be
+    /// compared with the shared workload harness, and no Adreno quirk is added without evidence.
+    pub fn gfxstream_vulkan_adreno() -> Self {
+        Self {
+            id: "gfxstream-vulkan-adreno".into(),
+            host_renderer_prefix: Some("Adreno".into()),
+            ..Self::gfxstream_vulkan_mali()
+        }
+    }
+
     fn host_matches(&self, host: &GpuHostCapabilities) -> bool {
         self.host_renderer_prefix
             .as_ref()

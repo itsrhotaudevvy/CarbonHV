@@ -77,6 +77,7 @@ sealed interface AppEvent {
     data class CreateNameChanged(val name: String) : AppEvent
     data object ConfirmCreate : AppEvent
     data class OpenSession(val instanceId: String) : AppEvent
+    data class SessionStateChanged(val instanceId: String, val state: SessionUiState) : AppEvent
     data object LeaveSession : AppEvent
     data class RecoveryRequired(val failure: FailureKind) : AppEvent
 }
@@ -125,6 +126,11 @@ fun reduceApp(state: AppState, event: AppEvent): AppState = when (event) {
     } else {
         state
     }
+    is AppEvent.SessionStateChanged -> state.copy(
+        instances = state.instances.map { instance ->
+            if (instance.id == event.instanceId) instance.copy(sessionState = event.state) else instance
+        },
+    )
     AppEvent.LeaveSession -> state.copy(screen = AppScreen.Library, activeInstanceId = null)
     is AppEvent.RecoveryRequired -> state.copy(
         screen = AppScreen.Recovery,

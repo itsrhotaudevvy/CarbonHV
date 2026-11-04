@@ -1,0 +1,2 @@
+/system_ext/bin/carbonhvd        u:object_r:carbonhvd_exec:s0
+/data/misc/carbonhv(/.*)?        u:object_r:carbonhv_data_file:s0

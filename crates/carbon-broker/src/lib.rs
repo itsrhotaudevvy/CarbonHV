@@ -1,8 +1,17 @@
 #![forbid(unsafe_code)]
 
+#[cfg(target_os = "android")]
+mod android_broker_service;
+#[cfg(target_os = "android")]
+mod android_host_runtime;
 mod avf;
 mod backend;
+mod control_plane;
 mod graphics;
+mod host_resources;
+mod host_runtime;
+mod runtime_orchestration;
+mod starter_bundles;
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -10,9 +19,25 @@ use std::path::PathBuf;
 use carbon_core::Generation;
 use carbon_protocol::{CallerIdentity, VmStartRequest};
 
-pub use avf::{AvfBackend, AvfGraphicsConfig, AvfLaunchPlan};
+#[cfg(target_os = "android")]
+pub use android_broker_service::run_android_broker_service;
+#[cfg(target_os = "android")]
+pub use android_host_runtime::{
+    AndroidHostRuntimeError, AndroidHostRuntimePublisher, LazyAndroidHostRuntimePublisher,
+};
+pub use avf::{
+    AvfBackend, AvfDisplayConfig, AvfGpuConfig, AvfGraphicsConfig, AvfInputConfig, AvfLaunchPlan,
+    AvfPlatformVmPlan,
+};
 pub use backend::{BackendError, HostProbe, HostVirtualizationClass, ProgramInvocation};
+pub use control_plane::{BrokerControlError, BrokerControlPlane, GraphicalStartIntent};
 pub use graphics::{GraphicsHandleLeaseError, GraphicsHandleLeaseTable, GraphicsHandleToken};
+pub use host_resources::{CpuCore, HostResources};
+pub use host_runtime::{
+    HostRuntimeDisk, HostRuntimeGraphicalVmRequest, HostRuntimePublisher, HostRuntimeRequestError,
+};
+pub use runtime_orchestration::{GraphicalRuntimeCoordinator, GraphicalRuntimeError};
+pub use starter_bundles::{StarterBundleError, resolve_starter_bundle_request};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrokerPolicy {
@@ -43,6 +68,12 @@ pub struct ValidatedVmSpec {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisplaySessionIdentity {
+    pub instance_id: String,
+    pub generation: Generation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeError {
     UnauthorizedCaller,
     InvalidInstanceId,
@@ -68,6 +99,11 @@ pub enum RuntimeError {
         expected: Generation,
         got: Generation,
     },
+    DisplaySessionBusy {
+        instance_id: String,
+        generation: Generation,
+    },
+    DisplaySessionNotActive,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +118,7 @@ pub struct Broker {
     minimum_generation: BTreeMap<String, Generation>,
     running: BTreeMap<String, InstanceRuntime>,
     completed_stops: BTreeMap<String, (Generation, u64)>,
+    active_display_session: Option<DisplaySessionIdentity>,
 }
 
 impl Broker {
@@ -91,6 +128,7 @@ impl Broker {
             minimum_generation: BTreeMap::new(),
             running: BTreeMap::new(),
             completed_stops: BTreeMap::new(),
+            active_display_session: None,
         }
     }
 
@@ -178,6 +216,46 @@ impl Broker {
         Ok(spec)
     }
 
+    pub fn next_generation(
+        &self,
+        caller: &CallerIdentity,
+        instance_id: &str,
+    ) -> Result<Generation, RuntimeError> {
+        self.authorize(caller)?;
+        if !valid_instance_id(instance_id) {
+            return Err(RuntimeError::InvalidInstanceId);
+        }
+        if let Some(existing) = self.running.get(instance_id) {
+            return Err(RuntimeError::InstanceAlreadyRunning {
+                generation: existing.generation,
+            });
+        }
+        Ok(self
+            .minimum_generation
+            .get(instance_id)
+            .copied()
+            .unwrap_or(Generation(0)))
+    }
+
+    pub fn generation_for_start(
+        &self,
+        caller: &CallerIdentity,
+        instance_id: &str,
+    ) -> Result<Generation, RuntimeError> {
+        self.authorize(caller)?;
+        if !valid_instance_id(instance_id) {
+            return Err(RuntimeError::InvalidInstanceId);
+        }
+        if let Some(existing) = self.running.get(instance_id) {
+            return Ok(existing.generation);
+        }
+        Ok(self
+            .minimum_generation
+            .get(instance_id)
+            .copied()
+            .unwrap_or(Generation(0)))
+    }
+
     pub fn stop(
         &mut self,
         caller: &CallerIdentity,
@@ -198,6 +276,14 @@ impl Broker {
                 got: generation,
             });
         }
+        if self.active_display_session.as_ref()
+            == Some(&DisplaySessionIdentity {
+                instance_id: instance_id.to_string(),
+                generation,
+            })
+        {
+            self.active_display_session = None;
+        }
         self.running.remove(instance_id);
         self.minimum_generation.insert(
             instance_id.to_string(),
@@ -205,6 +291,150 @@ impl Broker {
         );
         self.completed_stops
             .insert(instance_id.to_string(), (generation, request_id));
+        Ok(())
+    }
+
+    pub fn claim_display_session(
+        &mut self,
+        caller: &CallerIdentity,
+        instance_id: &str,
+        generation: Generation,
+    ) -> Result<DisplaySessionIdentity, RuntimeError> {
+        self.authorize(caller)?;
+        self.ensure_running_generation(instance_id, generation)?;
+
+        if let Some(active) = &self.active_display_session {
+            if active.instance_id == instance_id && active.generation == generation {
+                return Ok(active.clone());
+            }
+            return Err(RuntimeError::DisplaySessionBusy {
+                instance_id: active.instance_id.clone(),
+                generation: active.generation,
+            });
+        }
+
+        let identity = DisplaySessionIdentity {
+            instance_id: instance_id.to_string(),
+            generation,
+        };
+        self.active_display_session = Some(identity.clone());
+        Ok(identity)
+    }
+
+    pub fn authorize_display_session(
+        &self,
+        caller: &CallerIdentity,
+        instance_id: &str,
+        generation: Generation,
+    ) -> Result<(), RuntimeError> {
+        self.authorize(caller)?;
+        let Some(active) = &self.active_display_session else {
+            return Err(RuntimeError::DisplaySessionNotActive);
+        };
+        if active.instance_id != instance_id {
+            return Err(RuntimeError::DisplaySessionBusy {
+                instance_id: active.instance_id.clone(),
+                generation: active.generation,
+            });
+        }
+        if active.generation != generation {
+            return Err(RuntimeError::GenerationMismatch {
+                expected: active.generation,
+                got: generation,
+            });
+        }
+        self.ensure_running_generation(instance_id, generation)
+    }
+
+    pub fn active_display_session(&self) -> Option<DisplaySessionIdentity> {
+        self.active_display_session.clone()
+    }
+
+    pub fn active_display_generation(
+        &self,
+        caller: &CallerIdentity,
+        instance_id: &str,
+    ) -> Result<Option<Generation>, RuntimeError> {
+        self.authorize(caller)?;
+        if !valid_instance_id(instance_id) {
+            return Err(RuntimeError::InvalidInstanceId);
+        }
+        Ok(self
+            .active_display_session
+            .as_ref()
+            .filter(|identity| identity.instance_id == instance_id)
+            .map(|identity| identity.generation))
+    }
+
+    pub fn reconcile_runtime_died(
+        &mut self,
+        caller: &CallerIdentity,
+        instance_id: &str,
+        generation: Generation,
+    ) -> Result<bool, RuntimeError> {
+        self.authorize(caller)?;
+        let Some(running) = self.running.get(instance_id) else {
+            return Ok(false);
+        };
+        if running.generation != generation {
+            return Ok(false);
+        }
+
+        if self.active_display_session.as_ref()
+            == Some(&DisplaySessionIdentity {
+                instance_id: instance_id.to_string(),
+                generation,
+            })
+        {
+            self.active_display_session = None;
+        }
+        self.running.remove(instance_id);
+        self.minimum_generation.insert(
+            instance_id.to_string(),
+            Generation(generation.0.saturating_add(1)),
+        );
+        Ok(true)
+    }
+
+    pub(crate) fn prepare_graphical_stop(
+        &self,
+        caller: &CallerIdentity,
+        identity: &DisplaySessionIdentity,
+        request_id: u64,
+    ) -> Result<runtime_orchestration::GraphicalStopPreparation, RuntimeError> {
+        self.authorize(caller)?;
+        let Some(running) = self.running.get(&identity.instance_id) else {
+            if self.completed_stops.get(&identity.instance_id)
+                == Some(&(identity.generation, request_id))
+            {
+                return Ok(runtime_orchestration::GraphicalStopPreparation::AlreadyCompleted);
+            }
+            return Err(RuntimeError::InstanceNotRunning);
+        };
+        if running.generation != identity.generation {
+            return Err(RuntimeError::GenerationMismatch {
+                expected: running.generation,
+                got: identity.generation,
+            });
+        }
+        self.authorize_display_session(caller, &identity.instance_id, identity.generation)?;
+        Ok(runtime_orchestration::GraphicalStopPreparation::StopRuntime)
+    }
+
+    fn ensure_running_generation(
+        &self,
+        instance_id: &str,
+        generation: Generation,
+    ) -> Result<(), RuntimeError> {
+        let Some(running) = self.running.get(instance_id) else {
+            return Err(RuntimeError::InstanceNotRunning);
+        };
+        if running.generation != generation {
+            return Err(RuntimeError::GenerationMismatch {
+                expected: running.generation,
+                got: generation,
+            });
+        }
         Ok(())
     }
 

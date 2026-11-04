@@ -23,13 +23,35 @@ bash -n guest/android/build.sh
 bash -n guest/ubuntu-touch/build.sh
 bash -n qualification/carbon-qualify.sh
 bash -n qualification/test-dry-run.sh
+bash -n qualification/test-adb-probe.sh
 bash -n qualification/gpu/run-minimal.sh
 bash -n qualification/gpu/run-sustained.sh
 bash -n qualification/gpu/test-sustained.sh
+bash -n qualification/gpu/test-minimal-preflight.sh
 bash -n qualification/gpu/collect-report.sh
+bash -n host/android/test-framework-raw-config-contract.sh
+bash -n host/android/test-broker-aidl-contract.sh
+bash -n host/android/test-host-broker-forwarding-contract.sh
+bash -n host/android/test-rust-broker-service-contract.sh
+bash -n host/android/test-rust-runtime-binder-contract.sh
+bash -n host/test-platform-policy-contract.sh
+bash -n host/test-product-integration-contract.sh
+bash -n host/test-android-soong-contract.sh
+bash -n host/product/prepare-controlled-host.sh
+bash -n host/product/test-prepare-controlled-host.sh
+host/android/test-framework-raw-config-contract.sh
+host/android/test-broker-aidl-contract.sh
+host/android/test-host-broker-forwarding-contract.sh
+host/android/test-rust-broker-service-contract.sh
+host/android/test-rust-runtime-binder-contract.sh
+host/test-platform-policy-contract.sh
+host/test-product-integration-contract.sh
+host/test-android-soong-contract.sh
+host/product/test-prepare-controlled-host.sh
 
 echo "[6/9] Qualification fixtures"
 qualification/test-dry-run.sh
+qualification/test-adb-probe.sh
 
 echo "[7/9] GPU proof fixtures"
 gpu_pass="$(qualification/gpu/run-minimal.sh --fixture qualification/gpu/fixtures/mali-pass.env --dry-run)"
@@ -46,6 +68,7 @@ grep -qx 'gpu.sustained=false' <<<"$gpu_no_proof"
 grep -qx 'gpu.qualified=false' <<<"$gpu_no_proof"
 
 bash qualification/gpu/test-sustained.sh
+bash qualification/gpu/test-minimal-preflight.sh
 
 echo "[8/9] Android unit tests"
 if [[ -z "${JAVA_HOME:-}" ]]; then
@@ -55,7 +78,7 @@ if [[ -z "${JAVA_HOME:-}" ]]; then
 fi
 : "${JAVA_HOME:?Set JAVA_HOME to JDK 17 or newer before running Android verification}"
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$repo_root/.gradle-local}"
-./gradlew --no-daemon :android:domain:test :android:app:testDebugUnitTest
+./gradlew --no-daemon :android:domain:test :android:host-contract:test :android:app:testDebugUnitTest
 
 echo "[9/9] Android debug APK"
 ./gradlew --no-daemon :android:app:assembleDebug

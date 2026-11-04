@@ -102,3 +102,27 @@ fn mali_identity_is_required_by_backend_admission() {
         Err(RendererAdmissionError::IncompatibleHostRenderer)
     );
 }
+
+#[test]
+fn adreno_backend_reuses_the_mali_sandbox_and_rutabaga_contract() {
+    let adreno = carbon_renderer::gfxstream_vulkan_adreno_backend();
+    let mali = gfxstream_vulkan_mali_backend();
+
+    assert_eq!(adreno.profile.id, "gfxstream-vulkan-adreno");
+    assert_eq!(adreno.sandbox, mali.sandbox);
+    assert_eq!(adreno.rutabaga, mali.rutabaga);
+    assert_eq!(adreno.integration.owner, "avf-crosvm");
+}
+
+#[test]
+fn adreno_backend_admits_adreno_and_rejects_mali_hosts() {
+    let backend = carbon_renderer::gfxstream_vulkan_adreno_backend();
+    let mut host = mali_host();
+    assert_eq!(
+        backend.validate_host(&host),
+        Err(RendererAdmissionError::IncompatibleHostRenderer)
+    );
+
+    host.identity.renderer = "Adreno (TM) 710".into();
+    assert_eq!(backend.validate_host(&host), Ok(()));
+}

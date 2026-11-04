@@ -14,6 +14,7 @@ interface HostDisplaySurfaceClient {
 class BrokerGuestSurfaceCallbacks(
     private val session: SessionIdentity,
     private val client: HostDisplaySurfaceClient,
+    private val inputClient: HostGuestInputClient,
 ) : GuestSurfaceCallbacks {
     private var attached = false
 
@@ -35,4 +36,26 @@ class BrokerGuestSurfaceCallbacks(
         attached = false
         client.detachMainSurface(session)
     }
+
+    override fun onTouch(
+        action: Int,
+        actionPointerId: Int,
+        viewportWidth: Int,
+        viewportHeight: Int,
+        pointerIds: IntArray,
+        xs: FloatArray,
+        ys: FloatArray,
+    ): Boolean = inputClient.sendTouch(
+        session = session,
+        action = action,
+        actionPointerId = actionPointerId,
+        viewportWidth = viewportWidth,
+        viewportHeight = viewportHeight,
+        pointerIds = pointerIds,
+        xs = xs,
+        ys = ys,
+    )
+
+    override fun onKey(linuxKeyCode: Int, down: Boolean): Boolean =
+        inputClient.sendKey(session, linuxKeyCode, down)
 }
