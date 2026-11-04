@@ -14,9 +14,18 @@ import dev.carbonhv.host.ICarbonHvHostService
 
 class MainActivity : ComponentActivity() {
     private val hostService = mutableStateOf<ICarbonHvHostService?>(null)
-    private var hostServiceBound = false
+    private val hostBinding: HostBindingLifecycle = HostBindingLifecycle(
+        bind = {
+            bindService(
+                Intent().setComponent(ComponentName(HOST_PACKAGE, HOST_SERVICE)),
+                hostConnection,
+                Context.BIND_AUTO_CREATE,
+            )
+        },
+        unbind = { unbindService(hostConnection) },
+    )
 
-    private val hostConnection = object : ServiceConnection {
+    private val hostConnection: ServiceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
             hostService.value = ICarbonHvHostService.Stub.asInterface(binder)
         }
@@ -27,8 +36,7 @@ class MainActivity : ComponentActivity() {
 
         override fun onBindingDied(name: ComponentName?) {
             hostService.value = null
-            hostServiceBound = false
-            bindHostIntegration()
+            hostBinding.rebindAfterDeath()
         }
 
         override fun onNullBinding(name: ComponentName?) {
@@ -39,31 +47,16 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        bindHostIntegration()
+        hostBinding.bindIfNeeded()
         setContent {
             CarbonHvApp(hostService = hostService.value)
         }
     }
 
     override fun onDestroy() {
-        if (hostServiceBound) {
-            unbindService(hostConnection)
-            hostServiceBound = false
-        }
+        hostBinding.release()
         hostService.value = null
         super.onDestroy()
-    }
-
-    private fun bindHostIntegration() {
-        if (hostServiceBound) return
-        val intent = Intent().setComponent(
-            ComponentName(HOST_PACKAGE, HOST_SERVICE),
-        )
-        hostServiceBound = try {
-            bindService(intent, hostConnection, Context.BIND_AUTO_CREATE)
-        } catch (_: SecurityException) {
-            false
-        }
     }
 
     private companion object {

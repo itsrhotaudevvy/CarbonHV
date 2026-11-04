@@ -92,8 +92,41 @@ class AppReducerTest {
         val catalog = AppState.initial().catalog
         for (id in listOf("lineageos", "pixelos")) {
             val bundle = catalog.single { it.id == id }
-            assertTrue("${bundle.name} must be marked unofficial", bundle.name.endsWith("(unofficial)"))
+            assertTrue("${bundle.name} must be marked unofficial", bundle.unofficial)
+            assertFalse(bundle.name.contains("official", ignoreCase = true))
             assertEquals("Balanced", bundle.integrationProfile)
+            assertTrue(bundle.platform.endsWith("Android 17"))
         }
+        assertFalse(catalog.single { it.id == "grapheneos" }.unofficial)
+    }
+
+    @Test
+    fun library_subtitle_names_the_system_when_the_instance_was_renamed() {
+        val catalog = AppState.initial().catalog
+        val graphene = catalog.single { it.id == "grapheneos" }
+        val lineage = catalog.single { it.id == "lineageos" }
+        assertEquals(
+            "GrapheneOS-derived · Android 17",
+            instanceSubtitle(VmInstance("vm-1", "Daily driver", "grapheneos"), graphene),
+        )
+        assertEquals(
+            "LineageOS 24 · Android 17",
+            instanceSubtitle(VmInstance("vm-2", "LineageOS", "lineageos"), lineage),
+        )
+        assertEquals("unknown", instanceSubtitle(VmInstance("vm-3", "x", "unknown"), null))
+    }
+
+    @Test
+    fun enum_names_are_humanized_for_display() {
+        assertEquals("Host update incompatible", "HostUpdateIncompatible".humanized())
+        assertEquals("Retry", "Retry".humanized())
+    }
+
+    @Test
+    fun memory_is_shown_in_readable_gigabytes() {
+        assertEquals("4 GB", formatMemory(4096))
+        assertEquals("3 GB", formatMemory(3072))
+        assertEquals("3.5 GB", formatMemory(3584))
+        assertEquals("0.5 GB", formatMemory(512))
     }
 }
