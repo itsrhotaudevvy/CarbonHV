@@ -18,3 +18,5 @@ dist/
 emu/qemu/downloads/
 emu/qemu/build-android/
 android/emu/src/main/jniLibs/
+qualification/emu/probe-app/src/main/jniLibs/
+qualification/emu/probe-app/build/

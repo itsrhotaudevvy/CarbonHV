@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <application
+        android:extractNativeLibs="true"
+        android:label="CarbonHV emu probe">
+
+        <activity
+            android:name=".ProbeActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+            </intent-filter>
+        </activity>
+
+        <!-- Started by adb with am start-foreground-service; never covers the screen. -->
+        <service
+            android:name=".ProbeService"
+            android:exported="true"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="One-shot qualification probe for the CarbonHV emulated engine" />
+        </service>
+
+        <!-- P7: the same checks from an isolated_app process (Phase 14 hardening input). -->
+        <service
+            android:name=".IsolatedProbeService"
+            android:exported="false"
+            android:isolatedProcess="true"
+            android:process=":iso" />
+    </application>
+</manifest>

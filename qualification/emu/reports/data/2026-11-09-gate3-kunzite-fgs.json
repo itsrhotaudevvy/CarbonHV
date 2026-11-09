@@ -1,0 +1,156 @@
+{
+  "probe": "CarbonHV emulated engine Gate 3 probe v1",
+  "entry_point": "foreground service (specialUse)",
+  "environment": {
+    "fingerprint": "Redmi\/kunzite\/kunzite:16\/BP2A.250605.031.A3\/OS3.0.304.0.WPQCNXM:user\/release-keys",
+    "sdk": 36,
+    "target_sdk": 36,
+    "uid": 10586,
+    "selinux_context": "u:r:untrusted_app:s0:c74,c258,c512,c768",
+    "native_library_dir": "\/data\/app\/~~UrEcHZ2Hepp16OB_qub-uA==\/dev.carbonhv.emuprobe-1z0_ENqke-cT8hfb-RGAng==\/lib\/arm64",
+    "native_library_files": [
+      "libemuprobe_child.so",
+      "libemuprobe_jni.so",
+      "libqemu_system_aarch64.so"
+    ]
+  },
+  "p1_exec_qemu_version": {
+    "started": true,
+    "alive_at_deadline": false,
+    "exit_code": 0,
+    "error": null,
+    "output": [
+      "QEMU emulator version 11.1.3",
+      "Copyright (c) 2003-2026 Fabrice Bellard and the QEMU Project developers"
+    ]
+  },
+  "p2_jit": {
+    "anon_rwx": "ok: stub returned 42",
+    "anon_mprotect_rx": "ok: stub returned 42",
+    "memfd_dual_map": "ok: stub returned 42",
+    "qemu_tcg_split_wx_on": {
+      "started": true,
+      "alive_at_deadline": true,
+      "exit_code": null,
+      "error": null,
+      "output": []
+    },
+    "qemu_tcg_split_wx_off": {
+      "started": true,
+      "alive_at_deadline": true,
+      "exit_code": null,
+      "error": null,
+      "output": []
+    }
+  },
+  "p3_placement": {
+    "top_app_cpus": "unreadable: \/dev\/cpuset\/top-app\/cpus: open failed: EACCES (Permission denied)",
+    "own_cpuset": "\/foreground",
+    "pin_4_7_uclamp_512": "before=[0,1,2,3,4,5,6,7] setaffinity=ok after=[4,5,6,7] uclamp_set=errno=Operation not permitted uclamp_min_now=0"
+  },
+  "p4_gfxstream_in_qemu": {
+    "started": true,
+    "alive_at_deadline": true,
+    "exit_code": null,
+    "error": null,
+    "output": [
+      "libqemu_system_aarch64.so: -device virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,x-gfxstream-composer=on,cross-domain=off,hostmem=256M,wsi=surfaceless: info: [vk_common_operations.cpp(1346)] Selecting Vulkan device: Adreno (TM) 710, Version: 1.3.284",
+      "libqemu_system_aarch64.so: -device virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,x-gfxstream-composer=on,cross-domain=off,hostmem=256M,wsi=surfaceless: info: [vk_common_operations.cpp(1350)] Using Vulkan externalMemoryMode: AndroidAHB for VkEmulation",
+      "libqemu_system_aarch64.so: -device virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,x-gfxstream-composer=on,cross-domain=off,hostmem=256M,wsi=surfaceless: info: [virtio_gpu_gfxstream_renderer.cpp(860)] Gfxstream initialized successfully!"
+    ],
+    "gfxstream_initialized": true,
+    "vulkan_device": "libqemu_system_aarch64.so: -device virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,x-gfxstream-composer=on,cross-domain=off,hostmem=256M,wsi=surfaceless: info: [vk_common_operations.cpp(1346)] Selecting Vulkan device: Adreno (TM) 710, Version: 1.3.284"
+  },
+  "p4_vulkan_ahb_child_to_app": {
+    "child": {
+      "started": true,
+      "alive_at_deadline": false,
+      "exit_code": 0,
+      "error": null,
+      "output": [
+        "step: device=Adreno (TM) 710 api=1.3.284",
+        "step: AHB external memory extension present",
+        "step: GPU cleared the exportable image",
+        "step: exported AHB 256x256 format=1 usage=0x300",
+        "step: sent AHB, app ack=k"
+      ]
+    },
+    "received": true,
+    "width": 256,
+    "height": 256,
+    "format": 1,
+    "usage": "0x300",
+    "wrapped_as_bitmap": true,
+    "center_pixel": "0xFF3366CC",
+    "pixel_matches_gpu_clear": true
+  },
+  "p5_memory": {
+    "meminfo": [
+      "MemTotal:        7568976 kB",
+      "MemAvailable:    2951360 kB",
+      "SwapFree:        6126728 kB"
+    ],
+    "am_avail_mib": 2882,
+    "am_threshold_mib": 216,
+    "am_low_memory": false,
+    "large_memory_class_mib": 512,
+    "not_run": "2.5 GiB allocate-and-touch skipped on the owner's daily phone: it would make LMK kill their apps"
+  },
+  "p6_io": {
+    "o_direct": "write=4096 read=4096 data=match",
+    "io_uring_setup_in_child": {
+      "started": true,
+      "alive_at_deadline": false,
+      "exit_code": 159,
+      "error": null,
+      "output": []
+    }
+  },
+  "p7_isolated_process": {
+    "selinux_context": "u:r:isolated_app:s0:c512,c768",
+    "qemu_version": {
+      "started": true,
+      "alive_at_deadline": false,
+      "exit_code": 0,
+      "error": null,
+      "output": [
+        "QEMU emulator version 11.1.3",
+        "Copyright (c) 2003-2026 Fabrice Bellard and the QEMU Project developers"
+      ]
+    },
+    "memfd_dual_map": "ok: stub returned 42",
+    "inet_socket": "denied errno=13 (Permission denied)",
+    "open_kgsl": "denied errno=13 (Permission denied)",
+    "gfxstream": {
+      "started": true,
+      "alive_at_deadline": true,
+      "exit_code": null,
+      "error": null,
+      "output": [
+        "libqemu_system_aarch64.so: -device virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,x-gfxstream-composer=on,cross-domain=off,hostmem=256M,wsi=surfaceless: [vk_common_operations.cpp(963)] Failed to create Vulkan instance. Error VK_ERROR_INITIALIZATION_FAILED."
+      ],
+      "gfxstream_initialized": false,
+      "vulkan_device": null
+    }
+  },
+  "p7_app_process_comparison": {
+    "inet_socket": "denied errno=1 (Operation not permitted)",
+    "open_kgsl": "opened"
+  },
+  "p8_qemu_sandbox_flag": {
+    "started": true,
+    "alive_at_deadline": false,
+    "exit_code": 1,
+    "error": null,
+    "output": [
+      "libqemu_system_aarch64.so: -sandbox on: There is no option group 'sandbox'",
+      "libqemu_system_aarch64.so: -sandbox on: -sandbox support is not enabled in this QEMU binary"
+    ]
+  },
+  "p9_thermal": {
+    "status": 0,
+    "headroom_10s": 0.12416668236255646,
+    "not_run": "5-minute 4-thread spin skipped on the owner's daily phone (heat); Phase 12 measures it"
+  },
+  "done": true
+}

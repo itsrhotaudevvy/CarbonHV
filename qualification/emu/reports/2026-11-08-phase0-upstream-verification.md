@@ -5,7 +5,9 @@
 - **Author:** implementation pass (agent), to be reviewed by the project owner
 - **Update 2026-11-09 (later):** Gate 2 built the binary and showed V1, V3 and V13 on the phone as the adb shell user.
   See `2026-11-09-gate2-android-qemu-build.md`. V7 still needs the app sandbox (Gate 3).
-- **Gate:** **G0 NOT PASSED.** V1 and V3 are now ✅ from source. V13 has source-level evidence but no
+- **Update 2026-11-09 (Gate 3):** V7, V8, V9, V10 and V11 were measured in the app sandbox (`2026-11-09-gate3-app-sandbox-probe.md`).
+  **All four plan-changing claims (V1, V3, V7, V13) are ✅.** V12 (blocks only G1) and V14 (needs a GKI boot) stay open.
+- **Original gate line (2026-11-09 morning):** **G0 NOT PASSED.** V1 and V3 are now ✅ from source. V13 has source-level evidence but no
   build. V7 still needs a device (AVD or phone) and stays blocking. G0 also requires that the owner has
   seen this report and answered the questions at the end.
 
@@ -32,11 +34,11 @@ phone are marked **unverified**, not guessed. Nothing below is a capability clai
 | V4 | `-cpu max` accepts `pauth-impdef=on`, `pauth=off`, `sve=off`, `sme=off`; `virt,mte=on` exists | All started cleanly on the 11.1.3 binary | ✅ at 11.1.3 |
 | V5 | Cuttlefish builds an arm64 QEMU command line and boots it through a QEMU U-Boot | Upstream `qemu_manager.cpp`: arm64 uses `-bios <instance.bootloader()>` (U-Boot), `virt` with `gic-version=3` (when the host is compatible) or `2` (TCG), all virtio devices `*-pci-non-transitional`, `memory-backend-file,share=on` for vhost-user, and **`vhost-user-vsock-pci-non-transitional`** when `vhost_user_vsock` is set. The prebuilt U-Boot binary itself was not fetched | ✅ boot flow exists upstream; U-Boot binary unverified |
 | V6 | Termux patches are a usable reference | Not fetched in this pass | ⚠️ unverified (reference only, not blocking) |
-| V7 | Apps with `targetSdk ≥ 29` can exec from `nativeLibraryDir` with legacy packaging | Needs the probe APK on a device (Gate 3 P1) | **❌ unverified (blocking)** |
-| V8 | memfd double mapping / anonymous RWX for `targetSdk 36` | Needs Gate 3 P2. V3 shows `split-wx=on` needs only memfd + RX mapping, not RWX | ⚠️ unverified (mitigated) |
-| V9 | `io_uring` is blocked for apps | Needs Gate 3 P6 | ⚠️ unverified (mitigated: `aio=threads`, never `io_uring`) |
-| V10 | Apps may pin threads to CPUs 4–7 and use `uclamp.min` | Needs Gate 3 P3 | ⚠️ unverified (mitigated: warnings, not assumed) |
-| V11 | `isolatedProcess` services cannot open the GPU or sockets | Needs Gate 3 P7 | ⚠️ unverified (Phase 14 only) |
+| V7 | Apps with `targetSdk ≥ 29` can exec from `nativeLibraryDir` with legacy packaging | Gate 3 probe (`untrusted_app`, targetSdk 36, `extractNativeLibs=true`) ran `nativeLibraryDir/libqemu_system_aarch64.so --version` → exit 0 (2026-11-09) | ✅ on kunzite |
+| V8 | memfd double mapping / anonymous RWX for `targetSdk 36` | Gate 3: anonymous RWX, RW→RX `mprotect` and memfd RW+RX all allowed. QEMU TCG runs with `split-wx=on` and `off` | ✅ on kunzite (all modes) |
+| V9 | `io_uring` is blocked for apps | Gate 3: `io_uring_setup` is **killed by SIGSYS** (seccomp), not refused | ✅ (stricter: a kill) |
+| V10 | Apps may pin their own threads to CPUs 4–7 in the `top-app` cpuset and use `uclamp.min` | Gate 3, from a foreground service (`/foreground` cpuset): affinity to 4–7 ok. `uclamp.min` → EPERM | ✅ affinity / ❌ uclamp |
+| V11 | `isolatedProcess` services cannot open the GPU device or sockets | Gate 3: `isolated_app` → KGSL EACCES, `AF_INET` EACCES, Vulkan instance fails. Exec and JIT work | ✅ |
 | V12 | A public AOSP CI arm64 cuttlefish build is downloadable without login | `ci.android.com` answered **HTTP 403** to automated requests on 2026-11-09 for `aosp-main` and `aosp-android-latest-release` (`aosp_cf_arm64_only_phone*` targets). It was not bypassed. A person may still download it in a browser | ⚠️ unverified; **blocks G1 until the owner downloads the stand-in guest by hand or names another source** |
 | V13 | gfxstream host builds for an Android host (bionic) | gfxstream @ `ebe5b424` `host/Android.bp`: `libgfxstream_backend_defaults` is `vendor_available: true` and has an `android:` target linking `libnativewindow`, so Soong builds the host backend for Android devices (the AVF virt-APEX route). gfxstream's `meson.build` only branches on `linux`/`darwin`/`windows`/`qnx` for `host_machine.system()`, so an NDK meson build (`system = 'android'`) is **unproven** and may need a patch or a Soong-free build recipe | ⚠️ source evidence for Android; NDK build unproven (Gate 2 decides) |
 | V14 | Android 12+ GKI reads `androidboot.*` from an initrd bootconfig trailer | Implemented and unit-tested in `crates/carbon-emu/src/bootimg.rs`; not yet exercised against a GKI kernel | ⚠️ implementation tested, kernel unverified |
