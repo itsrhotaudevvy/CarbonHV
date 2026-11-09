@@ -1,0 +1,39 @@
+# QEMU libvhost-user: coexist with bionic's UAPI headers.
+#
+# <linux/vhost.h> on bionic pulls in UAPI virtio headers guarded by _UAPI_*, which the copies
+# under standard-headers/ then redefine. Both describe the same kernel ABI, so the standard-
+# headers guards are pre-defined when bionic's were seen. Bionic strips the kernel's inline
+# vring_need_event(), which is re-added with the virtio spec formula.
+# Needed because --enable-vhost-user (vhost-user-vsock, plan §3.6) builds libvhost-user.
+# Upstream status: not submitted.
+
+--- a/subprojects/libvhost-user/libvhost-user.h
++++ b/subprojects/libvhost-user/libvhost-user.h
+@@ -20,7 +20,27 @@
+ #include <poll.h>
+ #include <linux/vhost.h>
+ #include <pthread.h>
++#ifdef __ANDROID__
++/*
++ * Bionic's UAPI headers (pulled in by <linux/vhost.h>) use _UAPI_* include guards, so the
++ * copies under standard-headers/ would redefine the same structs. They describe the same
++ * kernel ABI, so treat them as already included.
++ */
++#ifdef _UAPI_LINUX_VIRTIO_RING_H
++#define _LINUX_VIRTIO_RING_H
++#endif
++#ifdef _UAPI_LINUX_VIRTIO_TYPES_H
++#define _LINUX_VIRTIO_TYPES_H
++#endif
++#endif
+ #include "standard-headers/linux/virtio_ring.h"
++#if defined(__ANDROID__) && defined(_UAPI_LINUX_VIRTIO_RING_H)
++/* Bionic's UAPI copy strips the kernel's inline helpers; this is the virtio spec formula. */
++static inline int vring_need_event(uint16_t event_idx, uint16_t new_idx, uint16_t old)
++{
++    return (uint16_t)(new_idx - event_idx - 1) < (uint16_t)(new_idx - old);
++}
++#endif
+ 
+ /* Based on qemu/hw/virtio/vhost-user.c */
+ #define VHOST_USER_F_PROTOCOL_FEATURES 30

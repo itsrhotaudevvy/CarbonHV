@@ -1,0 +1,49 @@
+# gfxstream: meson host build for Android (bionic, NDK).
+#
+# The meson build only knew linux/darwin/windows/qnx hosts. The android branch mirrors the
+# Soong `target: { android: … }` settings in Android.bp: VK_USE_PLATFORM_ANDROID_KHR,
+# GFXSTREAM_UNSTABLE_VULKAN_BLOB_COLOR_BUFFER, native_sub_window_android.cpp, and no
+# GLX/X11 sources. It also defines HAVE_MEMFD_CREATE (bionic API 30+).
+# Upstream status: not submitted.
+
+--- a/meson.build
++++ b/meson.build
+@@ -85,6 +85,13 @@
+   thread_dep = dependency('threads')
+   gfxstream_host_args += '-DVK_USE_PLATFORM_METAL_EXT'
+   gfxstream_host_args += '-DVK_USE_PLATFORM_MACOS_MVK'
++elif host_machine.system() == 'android'
++  # Mirrors the Soong `target: { android: … }` cflags in Android.bp (gfxstream_host_cc_defaults),
++  # plus memfd, which bionic has from API 30.
++  thread_dep = dependency('threads')
++  gfxstream_host_args += '-DVK_USE_PLATFORM_ANDROID_KHR'
++  gfxstream_host_args += '-DGFXSTREAM_UNSTABLE_VULKAN_BLOB_COLOR_BUFFER=1'
++  gfxstream_host_args += '-DHAVE_MEMFD_CREATE=1'
+ elif host_machine.system() == 'linux'
+   thread_dep = dependency('threads')
+   gfxstream_host_args += '-DGFXSTREAM_UNSTABLE_VULKAN_EXTERNAL_SYNC=1'
+--- a/host/native_window/meson.build
++++ b/host/native_window/meson.build
+@@ -22,6 +22,10 @@
+ elif host_machine.system() == 'windows'
+   files_lib_host_native_window += files('native_sub_window_win32.cpp')
+   includes_lib_host_native_window += [inc_opengl_headers]
++elif host_machine.system() == 'android'
++  # Same source Soong selects for `target: { android: … }` (Android.bp).
++  files_lib_host_native_window += files('native_sub_window_android.cpp')
++  includes_lib_host_native_window += [inc_opengl_headers]
+ elif host_machine.system() == 'linux' and use_gles
+   files_lib_host_native_window += files('native_sub_window_x11.cpp')
+   includes_lib_host_native_window += [inc_opengl_headers]
+--- a/host/gl/glestranslator/egl/meson.build
++++ b/host/gl/glestranslator/egl/meson.build
+@@ -45,6 +45,9 @@
+   egl_deps += dependency('appleframeworks', modules: ['AppKit', 'IOSurface'])
+ elif host_machine.system() == 'windows'
+   files_lib_egl_translator += files_egl_win32
++elif host_machine.system() == 'android'
++  # Soong compiles this for every target; Android hosts use EGL-on-EGL, never GLX.
++  files_lib_egl_translator += files('core_profile_configs_linux.cpp')
+ elif host_machine.system() == 'linux'
+   files_lib_egl_translator += files_egl_linux
+ endif

@@ -138,10 +138,33 @@ impl EmuDisplay {
 }
 
 /// One guest disk, identified by the *host* descriptor the service will pass to QEMU.
+///
+/// QEMU only accepts an `/dev/fdset` descriptor whose `O_ACCMODE | O_DIRECT` flags equal what it
+/// asks for (monitor/fds.c), so the service must open each disk exactly as
+/// [`EmuDisk::open_flags`] says. Observed on the phone at QEMU 11.1.3 (Gate 2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EmuDisk {
     pub fd: i32,
     pub writable: bool,
+}
+
+/// How the service must `open(2)` a disk before passing it to QEMU.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DiskOpenFlags {
+    /// `O_RDWR` when true, `O_RDONLY` otherwise.
+    pub read_write: bool,
+    /// `O_DIRECT`, required exactly when the drive uses `cache=none`.
+    pub direct: bool,
+}
+
+impl EmuDisk {
+    /// The open flags matching the `-drive` options the argv builder emits for this disk.
+    pub fn open_flags(&self, host: &EmuHostFacts) -> DiskOpenFlags {
+        DiskOpenFlags {
+            read_write: self.writable,
+            direct: host.o_direct,
+        }
+    }
 }
 
 /// Descriptors the service hands to QEMU. QEMU never receives a path into app storage.

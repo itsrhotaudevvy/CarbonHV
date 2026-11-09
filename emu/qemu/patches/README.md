@@ -1,15 +1,14 @@
-# QEMU patches for the emulated engine
+# Patches for the emulated engine's Android build
 
-Each patch here is a minimal, separately reviewable change with a header comment stating what it
-does, why it is needed on bionic/Android, and which upstream behaviour it preserves.
+Each patch is a minimal, separately reviewable change. Its header comment says what it does, why
+bionic/Android needs it, and whether it has been submitted upstream. `build-android.sh` applies
+`<project>/*.patch` in name order right after unpacking the pinned archive.
 
-Planned patches (Phase 2/4/7):
+| Directory | Patches today | Later (plan phase) |
+| --- | --- | --- |
+| `qemu/` | `0001-android-memfd-shm` (no `shm_open`/`librt` on bionic), `0002-libvhost-user-bionic-uapi-headers` | `ui/android.c` frame/input backend (Phase 4/5), `audio/aaudio.c` (Phase 7) |
+| `gfxstream/` | `0001-meson-android-host`, `0002-android-ndk-headers-no-x11`, `0003-udmabuf-require-access` | AHB-backed display ColorBuffers for zero-copy (Phase 6) |
+| `rutabaga_gfx/` | `0001-ndk-build-without-aosp-nativewindow`, plus `Cargo.lock` for `cargo build --locked` | — |
 
-| Patch | Purpose |
-| --- | --- |
-| `0001-ui-add-android-ahb-backend.patch` | `ui/android.c`: `-display android,frame-fd=N,input-fd=M`; scanout as `AHardwareBuffer` + fence, input injection into virtio-input |
-| `0002-audio-add-aaudio-backend.patch` | `audio/aaudio.c`: AAudio audiodev for `virtio-snd` |
-| `00xx-android-portability.patch` | bionic gaps (`sys/shm.h`, `getloadavg`, `pthread_cancel`, `posix_memalign`, `tmpfile`, ...) |
-
-Nothing is patched yet. QEMU is GPL-2.0; the published source offer for every release that ships
-the binary must include these patches and the exact sources pinned in `../VERSIONS.toml`.
+QEMU is GPL-2.0. The published source offer for every release that ships the binary must include
+these patches and the exact sources pinned in `../VERSIONS.toml`.

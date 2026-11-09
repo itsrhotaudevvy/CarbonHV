@@ -1,0 +1,41 @@
+# rutabaga_gfx: build for Android with the NDK (no AOSP `nativewindow` crate).
+#
+# `nativewindow` is an AOSP-internal Rust crate that only Soong builds provide. Exporting AHB
+# blobs through rutabaga now needs the cfg `rutabaga_aosp_nativewindow`. NDK builds
+# (CarbonHV's QEMU) take the same error path as non-Android hosts. The emulated engine sends
+# AHardwareBuffers with the public NDK socket API instead (frame protocol, plan Phase 4/6).
+# Upstream status: not submitted.
+
+--- a/src/gfxstream.rs
++++ b/src/gfxstream.rs
+@@ -534,7 +534,10 @@
+         ret_to_res(ret)?;
+ 
+         if stream_handle.handle_type == RUTABAGA_HANDLE_TYPE_PLATFORM_AHB {
+-            #[cfg(target_os = "android")]
++            // `nativewindow` is an AOSP-internal crate that only Soong builds provide. NDK builds
++            // (CarbonHV's QEMU) never export AHB blobs through rutabaga; they present AHBs with
++            // the public NDK socket API instead, so they take the non-Android error path.
++            #[cfg(all(target_os = "android", rutabaga_aosp_nativewindow))]
+             {
+                 use crate::handle::AhbInfo;
+                 use nativewindow::AhbInfo as NativeAhbInfo;
+@@ -569,7 +572,7 @@
+                     metadata: ahb_info.data,
+                 })))
+             }
+-            #[cfg(not(target_os = "android"))]
++            #[cfg(not(all(target_os = "android", rutabaga_aosp_nativewindow)))]
+             {
+                 Err(RutabagaError::InvalidResourceId)
+             }
+--- a/build.rs
++++ b/build.rs
+@@ -80,6 +80,7 @@
+ fn main() -> PkgConfigResult<()> {
+     println!("cargo:rustc-check-cfg=cfg(fence_passing_option1)");
+     println!("cargo:rustc-check-cfg=cfg(gfxstream_unstable)");
++    println!("cargo:rustc-check-cfg=cfg(rutabaga_aosp_nativewindow)");
+     println!("cargo:rustc-check-cfg=cfg(virgl_renderer_unstable)");
+     let mut use_fence_passing_option1 = true;
+ 

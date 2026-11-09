@@ -115,10 +115,11 @@ check() {
   local checked=0 failed=0 archive recorded actual
   if [[ -d "$downloads_dir" ]]; then
     while IFS= read -r archive; do
-      # The archive belongs to the section whose `url` ends in its file name; compare against
-      # that section's `sha256`.
+      # The archive belongs to the section whose `archive` key, or else whose `url` basename,
+      # equals its file name; compare against that section's `sha256`.
       recorded="$(pins | awk -F '\t' -v name="$(basename "$archive")" '
         $2 == "url" { n = split($3, parts, "/"); if (parts[n] == name) owner = $1 }
+        $2 == "archive" { if ($3 == name) owner = $1 }
         $2 == "sha256" { hash[$1] = $3 }
         END { if (owner != "") print hash[owner] }')"
       if [[ -z "$recorded" ]]; then
@@ -140,10 +141,183 @@ check() {
   return "$failed"
 }
 
+# Unpacks a pinned archive into a fresh source directory and prints that directory.
+unpack() {
+  local dep="$1" archive dest
+  archive="$(pin "$dep" archive)"
+  archive="$downloads_dir/${archive:-$(basename "$(pin "$dep" url)")}"
+  if [[ ! -f "$archive" ]]; then
+    echo "missing archive: $archive (download $(pin "$dep" url))" >&2
+    exit 2
+  fi
+  dest="$build_dir/src/$dep"
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  tar -xf "$archive" -C "$dest" --strip-components=1
+  apply_patches "$dep" "$dest"
+  printf '%s\n' "$dest"
+}
+
+# Applies emu/qemu/patches/<dep>/*.patch in name order. Every patch carries a header comment
+# explaining why it exists; `patch` skips that leading text.
+apply_patches() {
+  local dep="$1" dest="$2" patch_file
+  for patch_file in "$qemu_dir/patches/$dep"/*.patch; do
+    [[ -e "$patch_file" ]] || continue
+    patch -d "$dest" -p1 --forward --quiet <"$patch_file" >&2 \
+      || { echo "patch failed: $patch_file" >&2; exit 1; }
+  done
+}
+
+# meson cross file with this build's absolute dependency prefix.
+write_cross_file() {
+  sed -e "s|@DEPS@|$deps_dir|g" "$qemu_dir/cross/aarch64-android.ini" >"$build_dir/cross.ini"
+}
+
+meson_dep() {
+  local dep="$1"; shift
+  local src
+  src="$(unpack "$dep")"
+  meson setup "$src/_build" "$src" --cross-file "$build_dir/cross.ini" --prefix "$deps_dir" \
+    --libdir lib --buildtype release -Ddefault_library=static "$@" >"$build_dir/log/$dep.setup.log" 2>&1 \
+    || { tail -40 "$build_dir/log/$dep.setup.log" >&2; exit 1; }
+  ninja -C "$src/_build" -j"$jobs" install >"$build_dir/log/$dep.build.log" 2>&1 \
+    || { tail -40 "$build_dir/log/$dep.build.log" >&2; exit 1; }
+}
+
+autotools_dep() {
+  local dep="$1"; shift
+  local src
+  src="$(unpack "$dep")"
+  (cd "$src" && ./configure --host=aarch64-linux-android --prefix="$deps_dir" \
+      --enable-static --disable-shared "$@" >"$build_dir/log/$dep.setup.log" 2>&1 \
+    && make -j"$jobs" install >"$build_dir/log/$dep.build.log" 2>&1) \
+    || { tail -40 "$build_dir/log/$dep."*.log >&2; exit 1; }
+}
+
+build_deps() {
+  local src
+  echo "== zlib $(pin zlib version)"
+  src="$(unpack zlib)"
+  (cd "$src" && CHOST=aarch64-linux-android ./configure --static --prefix="$deps_dir" \
+      >"$build_dir/log/zlib.setup.log" 2>&1 && make -j"$jobs" install >"$build_dir/log/zlib.build.log" 2>&1) \
+    || { tail -40 "$build_dir/log/zlib."*.log >&2; exit 1; }
+
+  echo "== libffi $(pin libffi version)"
+  autotools_dep libffi --disable-docs --disable-multi-os-directory
+
+  echo "== pcre2 $(pin pcre2 version)"
+  autotools_dep pcre2 --disable-pcre2grep-libz --disable-pcre2grep-libbz2 --enable-pcre2-8 \
+    --disable-pcre2-16 --disable-pcre2-32
+
+  echo "== glib $(pin glib version)"
+  meson_dep glib -Dtests=false -Dselinux=disabled -Dlibmount=disabled -Dxattr=false \
+    -Dintrospection=disabled -Dnls=disabled -Dlibelf=disabled -Dsysprof=disabled \
+    -Dman-pages=disabled -Ddocumentation=false -Ddtrace=disabled -Dsystemtap=disabled \
+    -Dglib_debug=disabled -Dinstalled_tests=false
+
+  echo "== pixman $(pin pixman version)"
+  meson_dep pixman -Dtests=disabled -Ddemos=disabled -Dgtk=disabled -Dlibpng=disabled \
+    -Dopenmp=disabled
+
+  echo "== libslirp $(pin libslirp version)"
+  meson_dep libslirp
+
+  echo "== libfdt (dtc) $(pin libfdt version)"
+  meson_dep libfdt -Dtools=false -Dpython=disabled -Dtests=false -Dyaml=disabled -Dvalgrind=disabled
+
+  # dtc installs a shared libfdt regardless of default_library; QEMU must link the archive.
+  find "$deps_dir/lib" -name '*.so*' -delete
+}
+
+# gfxstream host backend (Vulkan + composer, and the GLES decoder Soong also builds). The guest
+# sees only the capsets QEMU enables: gfxstream-vulkan and x-gfxstream-composer, as CVD1 does.
+build_gfxstream() {
+  echo "== gfxstream $(pin gfxstream revision)"
+  meson_dep gfxstream -Ddecoders=gles,vulkan,composer
+}
+
+# rutabaga_gfx C FFI, static, from the pinned git tag with the locked crate graph.
+build_rutabaga_ffi() {
+  echo "== rutabaga_gfx_ffi $(pin rutabaga_gfx version) ($(pin rutabaga_gfx revision))"
+  local src cargo_bin min_sdk
+  src="$(unpack rutabaga_gfx)"
+  cp "$qemu_dir/patches/rutabaga_gfx/Cargo.lock" "$src/Cargo.lock"
+  cargo_bin="$(rustup which cargo 2>/dev/null)" \
+    || { echo "rustup is required (rutabaga pins its own rust-toolchain.toml)" >&2; exit 2; }
+  min_sdk="$(pin ndk min_sdk)"
+  # rust-toolchain.toml in the source asks for 1.88.0; the workspace's stable toolchain is used
+  # so the build never downloads a toolchain.
+  (cd "$src" && env RUSTUP_TOOLCHAIN=stable PATH="$(dirname "$cargo_bin"):$PATH" \
+      PKG_CONFIG_ALLOW_CROSS=1 USE_CLANG=1 \
+      CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="aarch64-linux-android$min_sdk-clang" \
+      CC_aarch64_linux_android="aarch64-linux-android$min_sdk-clang" \
+      CXX_aarch64_linux_android="aarch64-linux-android$min_sdk-clang++" \
+      AR_aarch64_linux_android=llvm-ar \
+      cargo build --locked --release --manifest-path ffi/Cargo.toml --target aarch64-linux-android \
+        --features gfxstream --target-dir "$build_dir/rutabaga-target" \
+      >"$build_dir/log/rutabaga.build.log" 2>&1) \
+    || { tail -40 "$build_dir/log/rutabaga.build.log" >&2; exit 1; }
+
+  cp "$build_dir/rutabaga-target/aarch64-linux-android/release/librutabaga_gfx_ffi.a" "$deps_dir/lib/"
+  mkdir -p "$deps_dir/include/rutabaga_gfx"
+  cp "$src/ffi/src/include/rutabaga_gfx_ffi.h" "$deps_dir/include/rutabaga_gfx/"
+  # Everything static except Android system libraries, so the APK ships one executable.
+  cat >"$deps_dir/lib/pkgconfig/rutabaga_gfx_ffi.pc" <<PC
+prefix=$deps_dir
+includedir=\${prefix}/include
+libdir=\${prefix}/lib
+
+Name: rutabaga_gfx_ffi
+Description: C FFI bindings to Rutabaga VGI (static, gfxstream, NDK libc++)
+Version: $(pin rutabaga_gfx version)
+Libs: -L\${libdir} -lrutabaga_gfx_ffi -lgfxstream_backend -l:libc++_static.a -l:libc++abi.a -lnativewindow -llog -ldl -lm
+Cflags: -I\${includedir}
+PC
+}
+
+build_qemu() {
+  echo "== QEMU $(pin qemu version)"
+  local src="$build_dir/src/qemu" obj="$build_dir/qemu" min_sdk
+  src="$(unpack qemu)"
+  min_sdk="$(pin ndk min_sdk)"
+  rm -rf "$obj"
+  mkdir -p "$obj"
+  # QEMU's configure writes its own meson cross file from these. Only the features the CVD1
+  # machine needs are enabled; --without-default-features turns everything else off.
+  (cd "$obj" && AR=llvm-ar NM=llvm-nm STRIP=llvm-strip RANLIB=llvm-ranlib OBJCOPY=llvm-objcopy \
+      PKG_CONFIG=pkg-config "$src/configure" \
+      --cross-prefix=aarch64-linux-android- \
+      --cc="aarch64-linux-android$min_sdk-clang" --cxx="aarch64-linux-android$min_sdk-clang++" \
+      --host-cc=/usr/bin/cc --cpu=aarch64 --target-list=aarch64-softmmu \
+      --without-default-features --enable-tcg --enable-slirp --enable-fdt=system --enable-pixman \
+      --enable-rutabaga-gfx --enable-vhost-user --disable-docs --disable-werror \
+      --extra-cflags="-I$deps_dir/include" --extra-ldflags="-L$deps_dir/lib" \
+      >"$build_dir/log/qemu.configure.log" 2>&1) \
+    || { tail -40 "$build_dir/log/qemu.configure.log" >&2; exit 1; }
+  ninja -C "$obj" -j"$jobs" qemu-system-aarch64 >"$build_dir/log/qemu.build.log" 2>&1 \
+    || { grep -E 'error|undefined' "$build_dir/log/qemu.build.log" | head -40 >&2; exit 1; }
+
+  llvm-strip -o "$output" "$obj/qemu-system-aarch64"
+  {
+    echo "qemu-system-aarch64 for aarch64-linux-android$min_sdk"
+    echo "sha256 $(shasum -a 256 "$output" | awk '{ print $1 }')"
+    echo "bytes  $(wc -c <"$output" | tr -d ' ')"
+    echo "ndk    $ndk_revision ($host_tag)"
+    echo "built  $(date -u +%Y-%m-%dT%H:%M:%SZ) on $(uname -sm)"
+    pins | awk -F '\t' '$2 == "version" || $2 == "revision" || $2 == "sha256" { print "pin    " $1 "." $2 " " $3 }'
+  } | tee "$build_dir/provenance.txt"
+}
+
 build() {
   local ndk="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-}}"
   if [[ -z "$ndk" ]]; then
-    echo "set ANDROID_NDK_HOME to an NDK r28 or newer" >&2
+    echo "set ANDROID_NDK_HOME to the pinned NDK ($(pin ndk version))" >&2
+    exit 2
+  fi
+  ndk_revision="$(awk -F' = ' '$1 == "Pkg.Revision" { print $2 }' "$ndk/source.properties" 2>/dev/null)"
+  if [[ "$ndk_revision" != "$(pin ndk version)" ]]; then
+    echo "NDK at $ndk is '$ndk_revision', pinned $(pin ndk version)" >&2
     exit 2
   fi
   local toolchain="$ndk/toolchains/llvm/prebuilt"
@@ -157,49 +331,29 @@ build() {
   export CC="aarch64-linux-android$(pin ndk min_sdk)-clang"
   export CXX="${CC}++"
   export AR=llvm-ar
+  export RANLIB=llvm-ranlib
   export STRIP=llvm-strip
+  export CFLAGS="-fPIC -O2"
+  export CXXFLAGS="-fPIC -O2"
 
   check
 
-  local build_dir="$qemu_dir/build-android"
-  local deps_dir="$build_dir/deps"
-  mkdir -p "$deps_dir" "$(dirname "$output")"
-  echo "build directory: $build_dir"
+  build_dir="$qemu_dir/build-android"
+  deps_dir="$build_dir/deps"
+  mkdir -p "$deps_dir" "$build_dir/log" "$(dirname "$output")"
+  # Only the cross prefix is visible to pkg-config; host libraries must never leak in.
+  export PKG_CONFIG_LIBDIR="$deps_dir/lib/pkgconfig:$deps_dir/share/pkgconfig"
+  unset PKG_CONFIG_PATH
+  write_cross_file
+  echo "build directory: $build_dir (NDK $ndk_revision, $host_tag)"
 
-  # Dependencies are built in this order because each later one needs the earlier headers.
-  local deps=(zlib libffi pcre2 glib pixman libslirp libfdt)
-  local dep
-  for dep in "${deps[@]}"; do
-    echo "== dependency: $dep $(pin "$dep" version)"
-    echo "   unpack $(pin "$dep" url) into $build_dir/src/$dep, configure with the android cross file,"
-    echo "   then install into $deps_dir. This step is intentionally not automated until the first"
-    echo "   Gate 2 build records the exact recipe that worked."
-    if [[ ! -f "$downloads_dir/$(basename "$(pin "$dep" url)")" ]]; then
-      echo "   missing archive: $(basename "$(pin "$dep" url)")" >&2
-      exit 2
-    fi
-  done
-
-  echo "== gfxstream ${pins:+$(pin gfxstream revision)} and rutabaga_gfx_ffi $(pin rutabaga_gfx version)"
-  echo "   build rutabaga_gfx_ffi from the pinned crate revision with the gfxstream feature, against"
-  echo "   the Android Vulkan loader, exactly as crates/carbon-renderer's native-gfxstream path does."
-
-  echo "== QEMU $(pin qemu version)"
-  echo "   meson setup $build_dir/qemu \\"
-  echo "     --cross-file $qemu_dir/cross/aarch64-android.ini \\"
-  echo "     --target-list=aarch64-softmmu --enable-tcg --enable-rutabaga-gfx --enable-slirp \\"
-  echo "     --enable-fdt=system --disable-kvm --disable-xen --disable-docs --disable-tools \\"
-  echo "     --disable-guest-agent --disable-sdl --disable-gtk --disable-vnc --disable-spice \\"
-  echo "     --disable-opengl --disable-virglrenderer --disable-libusb --disable-usb-redir \\"
-  echo "     --disable-linux-io-uring --disable-curl --disable-capstone"
-  echo "   ninja -C $build_dir/qemu -j$jobs"
-  echo "   strip and copy qemu-system-aarch64 to $output"
-
-  echo >&2
-  echo "This recipe stops here on purpose: the dependency and QEMU steps above have not been" >&2
-  echo "exercised in this repository yet (Gate 2). Record the working commands, the sha256 of every" >&2
-  echo "archive and the binary's size in qualification/emu/reports/ before claiming a build." >&2
-  exit 3
+  if [[ "${CARBON_EMU_SKIP_DEPS:-0}" != 1 ]]; then
+    build_deps
+    build_gfxstream
+    build_rutabaga_ffi
+  fi
+  build_qemu
+  echo "packaged: $output"
 }
 
 case "$mode" in

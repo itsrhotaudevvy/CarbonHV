@@ -13,16 +13,17 @@ engines; only the CPU/graphics transport differs, and the engine is always label
 | Launch planning (`crates/carbon-emu`) | Unit and golden tests in CI: exact QEMU argv, TCG placement, memory admission, CPU model, boot-image + bootconfig assembly, QMP client, frame/input wire format |
 | Broker control | `crates/carbon-broker` engine selection and the emulated adapter; `cargo test` covers "no stored engine never becomes emulated" |
 | CLI review surface | `carbonctl emu plan --facts qualification/emu/fixtures/kunzite.json --profile low-memory` |
-| QEMU build recipe | `emu/qemu/` with pinned versions and `build-android.sh --check` (no binary built here) |
-| Device probe / guest boot / performance | **Not done.** Phases 2–13 of the plan remain hardware- and builder-gated |
+| QEMU build recipe | `emu/qemu/build-android.sh --build`: pinned, hash-checked sources and documented patches; the binary is git-ignored |
+| Android binary on the phone | Gate 2: QEMU 11.1.3 + rutabaga/gfxstream runs on `kunzite` as the adb shell user, and gfxstream initializes Vulkan on the Adreno 710 |
+| App-sandbox probe / guest boot / performance | **Not done.** Gate 3 (probe APK) and Phases 1, 4–13 remain |
 
 ## Gates
 
 | Gate | State | Blocking evidence |
 | --- | --- | --- |
-| G0 upstream verification (V1–V14) | **Not passed** | V1/V3 ✅ from QEMU 11.1.3 source (2026-11-09). V7 (exec from `nativeLibraryDir`) still needs a device; V13 has Soong evidence but no NDK build; V12 (stand-in guest) needs a manual download. See the Phase 0 report |
+| G0 upstream verification (V1–V14) | **Not passed** | V1/V3/V13 ✅ (V13 shown on the phone in Gate 2). V7 (exec from `nativeLibraryDir` in the *app* sandbox) needs the Gate 3 probe APK; V12 (stand-in guest) needs a manual download. See the Phase 0 report |
 | G1 desktop TCG boot | Not started | Needs the AOSP cuttlefish arm64 stand-in guest and a Linux/macOS gfxstream build |
-| G2 Android QEMU binary | Not started | Needs NDK r28+ and the pinned source archives |
+| G2 Android QEMU binary | **Passed 2026-11-09** | Reproducible NDK build with rutabaga/gfxstream. On `kunzite` (shell user) TCG runs and gfxstream initializes Vulkan on the Adreno 710. See `reports/2026-11-09-gate2-android-qemu-build.md` |
 | G3 on-device probes | Not started | Needs the user's consent and the probe APK |
 | G4–G14 | Not started | — |
 

@@ -209,7 +209,9 @@ pub fn build_plan(
             args.push("-netdev".into());
             args.push("user,id=net0".into());
             args.push("-device".into());
-            args.push("virtio-net-pci,netdev=net0".into());
+            // No PXE/EFI option ROM: the guest boots Linux directly and the app ships no
+            // QEMU data files, so `efi-virtio.rom` would fail device realize.
+            args.push("virtio-net-pci,netdev=net0,romfile=".into());
         }
     }
     if spec.audio {
@@ -229,7 +231,9 @@ pub fn build_plan(
         if !disk.writable {
             drive.push_str(",readonly=on");
         } else {
-            drive.push_str(",discard=unmap,detect-zeroes=unmap");
+            // `-drive` defaults to auto-read-only=on, which first asks the fdset for an O_RDONLY
+            // descriptor; the service passes one O_RDWR descriptor per writable disk.
+            drive.push_str(",auto-read-only=off,discard=unmap,detect-zeroes=unmap");
         }
         args.push("-drive".into());
         args.push(drive);
@@ -368,6 +372,7 @@ fn is_safe_kernel_param(param: &str) -> bool {
 mod tests {
     use super::*;
     use crate::facts::VulkanFacts;
+    use crate::{DiskOpenFlags, EmuDisk};
 
     fn host() -> EmuHostFacts {
         EmuHostFacts {
@@ -424,6 +429,42 @@ mod tests {
     }
 
     #[test]
+    fn disk_open_flags_match_the_drive_options() {
+        let mut facts = host();
+        let ro = EmuDisk {
+            fd: 10,
+            writable: false,
+        };
+        let rw = EmuDisk {
+            fd: 11,
+            writable: true,
+        };
+        facts.o_direct = true;
+        assert_eq!(
+            ro.open_flags(&facts),
+            DiskOpenFlags {
+                read_write: false,
+                direct: true
+            }
+        );
+        assert_eq!(
+            rw.open_flags(&facts),
+            DiskOpenFlags {
+                read_write: true,
+                direct: true
+            }
+        );
+        facts.o_direct = false;
+        assert_eq!(
+            rw.open_flags(&facts),
+            DiskOpenFlags {
+                read_write: true,
+                direct: false
+            }
+        );
+    }
+
+    #[test]
     fn builds_a_hardening_first_argv() {
         let plan = build_plan(
             PathBuf::from("/usr/bin/qemu-system-aarch64"),
@@ -441,7 +482,7 @@ mod tests {
         assert!(args.contains(&"memory-backend-memfd,id=mem,size=2048M,share=on".to_string()));
         assert!(args.contains(&"virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,x-gfxstream-composer=on,cross-domain=off,hostmem=512M,wsi=surfaceless".to_string()));
         assert!(args.contains(&"file=/dev/fdset/0,if=none,id=drive0,format=raw,aio=threads,cache=none,readonly=on".to_string()));
-        assert!(args.contains(&"file=/dev/fdset/1,if=none,id=drive1,format=raw,aio=threads,cache=none,discard=unmap,detect-zeroes=unmap".to_string()));
+        assert!(args.contains(&"file=/dev/fdset/1,if=none,id=drive1,format=raw,aio=threads,cache=none,auto-read-only=off,discard=unmap,detect-zeroes=unmap".to_string()));
         assert!(args.contains(&"chardev:qmp0".to_string()));
         assert!(args.contains(&"console=hvc0 bootconfig".to_string()));
         // A TCG engine never reaches a hypervisor accelerator.

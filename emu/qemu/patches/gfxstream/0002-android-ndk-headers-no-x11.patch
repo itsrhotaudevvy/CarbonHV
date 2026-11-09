@@ -1,0 +1,92 @@
+# gfxstream: compile against the public NDK instead of platform headers.
+#
+# Soong defines ANDROID for device builds, while the NDK defines only __ANDROID__. Defining
+# ANDROID globally pulls in platform-only headers (cutils/native_handle.h), so the few
+# ANDROID/__linux__ checks that matter are widened instead:
+# - the public <android/hardware_buffer.h> replaces <vndk/hardware_buffer.h> (only NDK
+#   AHardwareBuffer_* calls are used);
+# - X11/GLX includes and members are excluded on Android;
+# - EglGlobalInfo uses EGL-on-EGL on Android, as Soong builds do.
+# Upstream status: not submitted.
+
+--- a/host/vulkan/vk_decoder_global_state.cpp
++++ b/host/vulkan/vk_decoder_global_state.cpp
+@@ -18,7 +18,8 @@
+ #endif
+ 
+ #ifdef __ANDROID__
+-#include <vndk/hardware_buffer.h>
++// Only the public NDK AHardwareBuffer API is used here; <vndk/…> is platform-internal.
++#include <android/hardware_buffer.h>
+ #endif
+ 
+ #ifdef __APPLE__
+--- a/host/gl/glestranslator/common/gl_dispatch.cpp
++++ b/host/gl/glestranslator/common/gl_dispatch.cpp
+@@ -21,7 +21,7 @@
+ #include "gfxstream/synchronization/Lock.h"
+ #include "gfxstream/common/logging.h"
+ 
+-#ifdef __linux__
++#if defined(__linux__) && !defined(__ANDROID__)  // X11 is not available on Android hosts
+ #include <GL/glx.h>
+ #elif defined(WIN32)
+ #include <windows.h>
+--- a/host/gl/glestranslator/egl/egl_os_api_egl.cpp
++++ b/host/gl/glestranslator/egl/egl_os_api_egl.cpp
+@@ -31,7 +31,7 @@
+ #include <android/native_window.h>
+ #endif
+ 
+-#ifdef __linux__
++#if defined(__linux__) && !defined(__ANDROID__)  // X11 is not available on Android hosts
+ #include "gfxstream/host/X11Support.h"
+ #include "x11_error_handler.h"
+ #endif
+@@ -334,7 +334,7 @@
+     std::string mVendor;
+     GlesVersion mGlesVersion;
+ 
+-#ifdef __linux__
++#if defined(__linux__) && !defined(__ANDROID__)  // X11 is not available on Android hosts
+     ::Display* mGlxDisplay = nullptr;
+ #endif // __linux__
+ };
+@@ -402,7 +402,7 @@
+     mHeadless = gfxstream::base::getEnvironmentVariable("ANDROID_EMU_HEADLESS") == "1";
+ 
+ #ifdef __ANDROID__
+-    mGlxDisplay = nullptr;
++    // No X11 display on Android hosts (mGlxDisplay is not declared there).
+ #elif defined(__linux__)
+     if (mHeadless) mGlxDisplay = nullptr;
+     else mGlxDisplay = getX11Api()->XOpenDisplay(0);
+@@ -459,7 +459,7 @@
+ };
+ 
+ EglOsEglDisplay::~EglOsEglDisplay() {
+-#ifdef ANDROID
++#if defined(ANDROID) || defined(__ANDROID__)
+ #elif defined(__linux__)
+     if (mGlxDisplay) getX11Api()->XCloseDisplay(mGlxDisplay);
+ #endif // __linux__
+@@ -769,7 +769,7 @@
+ bool EglOsEglDisplay::isValidNativeWin(EGLNativeWindowType win) {
+ #ifdef _WIN32
+     return IsWindow(win);
+-#elif defined(ANDROID)
++#elif defined(ANDROID) || defined(__ANDROID__)
+     return true;
+ #elif defined(__linux__)
+     Window root;
+--- a/host/gl/glestranslator/egl/egl_global_info.cpp
++++ b/host/gl/glestranslator/egl/egl_global_info.cpp
+@@ -64,7 +64,7 @@
+ }
+ 
+ EglGlobalInfo::EglGlobalInfo(bool nullEgl) {
+-#if defined(ANDROID) || defined(__QNX__)
++#if defined(ANDROID) || defined(__ANDROID__) || defined(__QNX__)
+     sEgl2Egl = true;
+     sEgl2EglSyncSafeToUse = true;
+     m_engine = EglOS::

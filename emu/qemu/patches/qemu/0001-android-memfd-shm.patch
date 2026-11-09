@@ -1,0 +1,59 @@
+# QEMU: build on bionic without POSIX shared memory.
+#
+# Android has no shm_open() and no librt. meson.build stops requiring librt when the compiler
+# defines __ANDROID__, and qemu_shm_alloc() uses an anonymous memfd (bionic API 30+, our
+# minSdk). It is still unnamed, fd-only and resizable, as the POSIX version is.
+# Upstream status: not submitted.
+
+--- a/meson.build
++++ b/meson.build
+@@ -1371,7 +1371,8 @@
+ rt = not_found
+ if host_os != 'windows'
+   have_shm_open = cc.has_function('shm_open')
+-  if not have_shm_open
++  # Android's bionic has neither shm_open nor librt; util/oslib-posix.c uses memfd_create there.
++  if not have_shm_open and cc.get_define('__ANDROID__') == ''
+     rt = cc.find_library('rt', required: true)
+   endif
+ endif
+--- a/util/oslib-posix.c
++++ b/util/oslib-posix.c
+@@ -981,7 +981,32 @@
+         qemu_close_all_open_fd_fallback(skip, nskip, open_max);
+     }
+ }
++
++#ifdef __ANDROID__
++#include <sys/mman.h> /* memfd_create, bionic API 30+ */
+ 
++/*
++ * Android has no POSIX shared memory (no shm_open, no /dev/shm). An anonymous memfd gives the
++ * same result qemu_shm_alloc() wants: an unnamed, fd-only, resizable shared memory object that
++ * other processes can map only if they are handed the descriptor.
++ */
++int qemu_shm_alloc(size_t size, Error **errp)
++{
++    int fd = memfd_create("qemu-shm", MFD_CLOEXEC);
++
++    if (fd < 0) {
++        error_setg_errno(errp, errno, "failed to create memfd shared memory");
++        return -1;
++    }
++    if (ftruncate(fd, size) == -1) {
++        error_setg_errno(errp, errno,
++                         "failed to resize memfd shared memory to %zu", size);
++        close(fd);
++        return -1;
++    }
++    return fd;
++}
++#else
+ int qemu_shm_alloc(size_t size, Error **errp)
+ {
+     g_autoptr(GString) shm_name = g_string_new(NULL);
+@@ -1033,3 +1058,4 @@
+ 
+     return fd;
+ }
++#endif /* __ANDROID__ */

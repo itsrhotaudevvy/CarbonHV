@@ -16,15 +16,24 @@ sha256 = "5a8289c7940dc77d3873c81a6c29ba3afe1446fc9d36e77fa1658cdbecb84b22"
 
 [rutabaga_gfx]
 # Must match Cargo.lock's `rutabaga_gfx`, so the guest-visible capsets are identical to the
-# AVF/crosvm path.
+# AVF/crosvm path. The crates.io crate omits ffi/, so the C FFI QEMU links is built from the
+# v0.1.80 git tag (the crate's .cargo_vcs_info.json names the same commit).
 version = "0.1.80"
 crate_sha256 = "2817d168222af3c49269f583dd8e67429912953ae608f715fd97683ed50320a5"
+revision = "d1b06416e2353c99c99e61eab15560484f45496f"
+url = "https://github.com/magma-gpu/rutabaga_gfx/archive/d1b06416e2353c99c99e61eab15560484f45496f.tar.gz"
+archive = "rutabaga_gfx-d1b06416e2353c99c99e61eab15560484f45496f.tar.gz"
+# GitHub archive tarballs are generated on demand and may change bytes over time. If this hash
+# stops matching, re-verify the revision's tree and record the new hash in a report.
+sha256 = "84c2aa95050ef7a69254ed703e0a664bdb8f782bc411b806f12a992a3bef155e"
 
 [gfxstream]
 # Matches workspace.metadata.carbonhv.renderer-upstream (Cargo.toml).
 revision = "ebe5b424e15c0816f64b97c9691060333bb43c7e"
-# GitHub snapshot tarballs are not byte-stable; pinned by revision until Gate 2 picks a fetch method.
-sha256 = ""
+url = "https://github.com/google/gfxstream/archive/ebe5b424e15c0816f64b97c9691060333bb43c7e.tar.gz"
+archive = "gfxstream-ebe5b424e15c0816f64b97c9691060333bb43c7e.tar.gz"
+# Same GitHub-archive caveat as rutabaga_gfx above.
+sha256 = "98f4769eb5a58b3a02d9ab183400de1a3a2cb0e6c77b48faeca0e068e497e7d5"
 
 [glib]
 version = "2.82.4"
@@ -63,6 +72,6 @@ sha256 = "86b9cb0aa3bcb7994faa88018292bc704cdbb708e785f7c74352ff6ea7d3175b"
 
 [ndk]
 # Cross-compile target ABI; NDK r28 or newer (bionic and Vulkan headers must match minSdk 30).
-version = "28.0.13004108"
+version = "28.2.13676358"
 min_sdk = "30"
 target = "aarch64-linux-android30"

@@ -1,0 +1,21 @@
+# gfxstream: only use udmabuf when this process can open it.
+#
+# On stock Android 16 (kernel 6.6) /dev/udmabuf exists but is root-only (crw------- root).
+# HasUdmabufDevice() checked F_OK, so VulkanAllocateHostVisibleAsUdmabuf turned on and
+# VkEmulation then hit GFXSTREAM_FATAL("udmabuf failed to initialize"). R_OK reflects whether
+# the device is usable. Observed on Redmi kunzite, 2026-11-09.
+# Upstream status: not submitted.
+
+--- a/common/base/UdmabufCreator_linux.cpp
++++ b/common/base/UdmabufCreator_linux.cpp
+@@ -74,7 +74,9 @@
+     return true;
+ }
+ 
+-bool HasUdmabufDevice() { return access("/dev/udmabuf", F_OK) == 0; }
++// The node existing is not enough: on stock Android it is root-only (crw------- root), so an
++// app process must not turn on VulkanAllocateHostVisibleAsUdmabuf and then fail init().
++bool HasUdmabufDevice() { return access("/dev/udmabuf", R_OK) == 0; }
+ 
+ UdmabufCreator::UdmabufCreator() {}
+ 

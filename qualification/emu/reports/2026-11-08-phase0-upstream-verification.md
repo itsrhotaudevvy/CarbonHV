@@ -3,6 +3,8 @@
 - **Dates:** 2026-11-08 (first pass, offline), 2026-11-09 (second pass, with network and source checkouts)
 - **Plan:** `docs/superpowers/plans/2026-11-08-qemu-emulated-engine.md`
 - **Author:** implementation pass (agent), to be reviewed by the project owner
+- **Update 2026-11-09 (later):** Gate 2 built the binary and showed V1, V3 and V13 on the phone as the adb shell user.
+  See `2026-11-09-gate2-android-qemu-build.md`. V7 still needs the app sandbox (Gate 3).
 - **Gate:** **G0 NOT PASSED.** V1 and V3 are now ✅ from source. V13 has source-level evidence but no
   build. V7 still needs a device (AVD or phone) and stays blocking. G0 also requires that the owner has
   seen this report and answered the questions at the end.
