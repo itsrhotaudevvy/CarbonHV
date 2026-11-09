@@ -3,6 +3,7 @@ package dev.carbonhv.app
 import dev.carbonhv.domain.FailureKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -98,6 +99,33 @@ class AppReducerTest {
             assertTrue(bundle.platform.endsWith("Android 17"))
         }
         assertFalse(catalog.single { it.id == "grapheneos" }.unofficial)
+    }
+
+    @Test
+    fun planned_rom_ports_are_listed_but_cannot_be_created() {
+        val initial = AppState.initial()
+        for (id in listOf("lineageos", "pixelos")) {
+            assertTrue(initial.catalog.single { it.id == id }.planned)
+            val state = reduceApp(initial, AppEvent.OpenCreate(id))
+            assertEquals(AppScreen.Library, state.screen)
+            assertNull(state.createBundleId)
+        }
+        assertFalse(initial.catalog.single { it.id == "grapheneos" }.planned)
+        assertFalse(initial.catalog.single { it.id == "ubuntu-touch" }.planned)
+    }
+
+    @Test
+    fun memory_is_chosen_per_vm_from_the_offered_sizes() {
+        var state = reduceApp(AppState.initial(), AppEvent.OpenCreate("ubuntu-touch"))
+        assertEquals(3072, state.createMemoryMiB)
+        state = reduceApp(state, AppEvent.CreateMemoryChanged(5000))
+        assertEquals(3072, state.createMemoryMiB)
+        state = reduceApp(state, AppEvent.CreateMemoryChanged(6144))
+        state = reduceApp(state, AppEvent.CreateNameChanged("Phone"))
+        state = reduceApp(state, AppEvent.ConfirmCreate)
+        assertEquals(6144, state.instances.single().memoryMiB)
+        assertEquals(listOf(3072, 4096, 6144), MEMORY_OPTIONS_MIB)
+        assertEquals("6 GB", formatMemory(6144))
     }
 
     @Test

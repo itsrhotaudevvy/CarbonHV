@@ -6,7 +6,7 @@ engines; only the CPU/graphics transport differs, and the engine is always label
 
 ## Status
 
-`EXPERIMENTAL` — **no emulated guest has booted on a phone through CarbonHV.** What exists today:
+`EXPERIMENTAL` — **an Android guest now boots on the phone and is drawn on its screen** (the AOSP Cuttlefish stand-in, not GrapheneOS; it reaches `system_server` and the boot animation, not yet `boot_completed`). What exists today:
 
 | Layer | Evidence |
 | --- | --- |
@@ -16,7 +16,8 @@ engines; only the CPU/graphics transport differs, and the engine is always label
 | QEMU build recipe | `emu/qemu/build-android.sh --build`: pinned, hash-checked sources and documented patches; the binary is git-ignored |
 | Android binary on the phone | Gate 2: QEMU 11.1.3 + rutabaga/gfxstream runs on `kunzite` as the adb shell user, and gfxstream initializes Vulkan on the Adreno 710 |
 | App-sandbox probe | Gate 3: the same binary runs as `untrusted_app` from a foreground service, with gfxstream on the Adreno and a cross-process AHB handoff |
-| Guest boot / performance | **Not done.** Phases 1 and 4–13 remain |
+| Guest boot on the phone | **Working, 2026-11-09.** `android-standin/` boots the stand-in guest on `kunzite` as the shell user and inside `viewer-app/` (`untrusted_app`), frames on the phone's screen. See `reports/2026-11-09-android-standin-boot-on-phone.md` |
+| Boot to home screen / performance | **Not done.** TCG boot is too slow to reach `boot_completed` in a usable time; no `:vm` service, no input |
 
 ## Gates
 

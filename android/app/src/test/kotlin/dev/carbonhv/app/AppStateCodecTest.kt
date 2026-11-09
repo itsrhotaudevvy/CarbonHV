@@ -9,7 +9,7 @@ import org.junit.Test
 class AppStateCodecTest {
     private fun populated(): AppState {
         var state = AppState.initial()
-        for ((bundle, name) in listOf("grapheneos" to "Daily driver", "lineageos" to "LineageOS")) {
+        for ((bundle, name) in listOf("grapheneos" to "Daily driver", "ubuntu-touch" to "Ubuntu Touch")) {
             state = reduceApp(state, AppEvent.OpenCreate(bundle))
             state = reduceApp(state, AppEvent.CreateNameChanged(name))
             state = reduceApp(state, AppEvent.ConfirmCreate)
@@ -25,12 +25,14 @@ class AppStateCodecTest {
 
     @Test
     fun an_in_progress_create_form_is_restored() {
-        var state = reduceApp(populated(), AppEvent.OpenCreate("pixelos"))
+        var state = reduceApp(populated(), AppEvent.OpenCreate("grapheneos"))
         state = reduceApp(state, AppEvent.CreateNameChanged("Pix"))
+        state = reduceApp(state, AppEvent.CreateMemoryChanged(6144))
         val restored = AppStateCodec.decode(AppStateCodec.encode(state))
         assertEquals(AppScreen.Create, restored.screen)
-        assertEquals("pixelos", restored.createBundleId)
+        assertEquals("grapheneos", restored.createBundleId)
         assertEquals("Pix", restored.createName)
+        assertEquals(6144, restored.createMemoryMiB)
     }
 
     @Test

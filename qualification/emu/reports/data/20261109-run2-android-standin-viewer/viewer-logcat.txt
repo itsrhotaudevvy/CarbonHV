@@ -1,0 +1,5 @@
+--------- beginning of main
+11-09 16:19:05.939  3076  3076 I CarbonEmuViewer: qemu pid=6519 frame socket=144
+11-09 16:19:05.939  3076  3076 I CarbonEmuViewer: emulator pid=6519, 183 arguments, guest dir /data/user/0/dev.carbonhv.emuviewer/files/guest
+11-09 16:19:06.823  3076  6520 I CarbonEmuViewer: mode 640x480
+11-09 16:22:08.871  3076  6520 I CarbonEmuViewer: mode 720x1280

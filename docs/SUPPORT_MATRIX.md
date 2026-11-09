@@ -20,7 +20,7 @@ Status vocabulary:
 | Area | Status | Current evidence | Remaining gate |
 | --- | --- | --- | --- |
 | ARM64 admission and engine identity | Verified | Rust admission and bundle tests reject cross-ISA and missing-virtualization hosts; an emulated engine is admitted only when the instance stored it, plus `EmulationReadiness` (ADR-017). No runtime can *silently* select emulation | Physical backend must still boot an actual ARM64 guest |
-| Emulated-engine planning (QEMU TCG) | Verified source / no runtime evidence | `carbon-emu` builds and golden-tests the exact QEMU argv from measured host facts: TCG placement, memory admission, CPU model, boot-image/bootconfig assembly, QMP client and the frame/input wire format. `carbonctl emu plan` reproduces it. `scripts/verify.sh` runs the golden argvs and the pin check | QEMU has not been cross-built for Android here, and no guest has booted through it (Gates 2, 4, 6, 10) |
+| Emulated-engine planning (QEMU TCG) | Verified source; **an Android guest boots on a phone** | `carbon-emu` builds and golden-tests the exact QEMU argv from measured host facts: TCG placement, memory admission, CPU model, boot-image/bootconfig assembly, QMP client and the frame/input wire format. `carbonctl emu plan` reproduces it. `scripts/verify.sh` runs the golden argvs and the pin check | On `kunzite` the AOSP stand-in guest (not GrapheneOS) boots to `system_server` and the boot animation, drawn on the phone's screen from inside an app (2026-11-09 report). No boot to the home screen, no `:vm` service, no input yet |
 | Lifecycle generation/state model | Verified | Rust lifecycle tests cover legal transitions, stale generations, idempotent requests, single disk writer | Wire to real platform service/runtime and test process death |
 | Bundle manifest parsing | Verified | Strict parser and both starter manifests pass `carbonctl bundle verify` | Production signatures/catalog trust not implemented |
 | CVD1 virtual-device contracts | Verified | Contract tests cover major version, ARM64, required virtio devices, guest family | Real backend device realization not yet proven |
@@ -133,7 +133,7 @@ Implications that hold across families:
 - **Driver versions are part of every qualification tuple.** For example, Tensor G5's PowerVR driver changed during 2025–2026, so evidence from one driver version never carries over to another.
 - **Core classification:** the ADB probe records `cpu_parts`, `cpu_freq_domains`, `renderer_profile` and the vendor device's SELinux label, so a first physical run on each family can confirm or correct the classification above.
 
-## 2d. Emulated engine (QEMU TCG), source level only
+## 2d. Emulated engine (QEMU TCG): an Android guest boots on the phone
 
 The emulated engine is the answer for **stock phones whose hypervisor is unreachable from apps**, starting with the Redmi `kunzite`. It is opt-in per instance and always labelled *Emulated* (ADR-017).
 
@@ -143,13 +143,14 @@ The emulated engine is the answer for **stock phones whose hypervisor is unreach
 | Graphics | `virtio-gpu-rutabaga` with gfxstream on the host Vulkan device (Adreno 710), composition on the GPU |
 | Presentation | Composed frame as `AHardwareBuffer` + `sync_file` fence into the existing `GraphicsSession`; CPU readback is the labelled, measured fallback |
 | Guest ABI | Unchanged CVD1. The same GrapheneOS-derived image runs on both engines |
-| QEMU build | Recipe and pins in `emu/qemu/` (`VERSIONS.toml`, `--check`). **No Android binary has been built or run here** |
+| QEMU build | Recipe and pins in `emu/qemu/` (`VERSIONS.toml`, `--check`). The Android binary is built (Gate 2) and runs as the shell user and as `untrusted_app` (Gate 3) |
+| Guest boot | **AOSP Cuttlefish stand-in (not GrapheneOS) on `kunzite`, 2026-11-09:** kernel, first-stage mount of a GPT `super`, FBE on `/data`, zygote, `system_server` (≈5 min under TCG) and the boot animation, on the phone's screen from the qualification viewer app (`untrusted_app`). Not yet `boot_completed`. Graphics in that run were guest-CPU (ANGLE on SwiftShader) over 2D `virtio-gpu`, not gfxstream. [Report](../qualification/emu/reports/2026-11-09-android-standin-boot-on-phone.md) |
 | Admission | `EmulationReadiness` (memory, Vulkan, ABI) is separate from `HostVirtualizationClass`; an instance with no stored engine never starts emulated |
 | Memory | Guest + 768 MiB reserve must be free. On the measured 2026-11-04 reading (2750 MiB `MemAvailable`) the 2048 MiB `balanced` profile is **refused** and `low-memory` (1536 MiB) is the honest choice. `carbonctl emu plan` prints the refusal with the numbers |
 | Performance | **Unmeasured.** No target or ratio is claimed until G1 (desktop TCG) and G11 (phone) produce reports |
 | Security | No stage-2 isolation: guest/host isolation is TCG's software MMU plus the app sandbox. Recorded in the security model |
 
-The only verified fact at this point is that the *plan* is exact, reviewable and fails closed. Every runtime claim is gated behind `qualification/emu/reports/`.
+Verified so far: the plan is exact and fails closed, the Android binary runs in the app sandbox, and an Android guest boots far enough to draw on the phone's screen. Every runtime claim is gated behind `qualification/emu/reports/`.
 
 ## 3. Starter guest status
 
@@ -158,8 +159,8 @@ The only verified fact at this point is that the *plan* is exact, reviewable and
 | CarbonHV GrapheneOS-derived ARM64 | CVD1 contract verified; Linux source recipe present; virtual gralloc/HWC/EGL/Vulkan requirements locked | Recipe only | Unverified | Unverified | Contract requires virtual GLES/Vulkan + native-buffer/explicit-sync; runtime unverified | Unverified on VM target | Transaction model only | Development recipe |
 | Ubuntu Touch / Lomiri ARM64 | CVD1 contract verified; rootfs+kernel assembler recipe present; Mesa/Mir virtio-gpu requirements locked | Recipe only | Unverified | Unverified | Contract requires GLES + native-buffer/explicit-sync; Vulkan tested if exposed; runtime unverified | AppArmor/mobile-service behavior unverified | Transaction model only | Development recipe |
 
-| LineageOS ARM64 (unofficial) | CVD1 contract verified. The shared AOSP-derived overlay (`lineage_carbonhv_cvd1`) sits on the cuttlefish arm64-only phone; the recipe defaults to `lineage-24.0` (Android 17, `cp2a`), with `lineage-23.2` selectable | Recipe only | Unverified | Unverified | gfxstream guest GLES/Vulkan via the cuttlefish base (Lineage's Mesa/virgl virtio target deliberately not used); runtime unverified | Unverified; bundle boot parameters not yet carried by the broker | Transaction model only | Additional development recipe |
-| PixelOS ARM64 (unofficial) | CVD1 contract verified. Same overlay (`aosp_carbonhv_cvd1`); the recipe defaults to `seventeen` (`android-17.0.0_r1` + `lineage-24.0`), with `sixteen-qpr2` (PixelOS 16.2) selectable | Recipe only | Unverified | Unverified | Same as LineageOS | Same as LineageOS; no Pixel-exclusive or Google-certified features | Transaction model only | Additional development recipe |
+| LineageOS ARM64 (unofficial) | CVD1 contract verified. The shared AOSP-derived overlay (`lineage_carbonhv_cvd1`) sits on the cuttlefish arm64-only phone; the recipe defaults to `lineage-24.0` (Android 17, `cp2a`), with `lineage-23.2` selectable | Recipe only, **not being built** | Unverified | Unverified | gfxstream guest GLES/Vulkan via the cuttlefish base (Lineage's Mesa/virgl virtio target deliberately not used); runtime unverified | Unverified; bundle boot parameters not yet carried by the broker | Transaction model only | **Planned** (listed in the app, cannot be created) |
+| PixelOS ARM64 (unofficial) | CVD1 contract verified. Same overlay (`aosp_carbonhv_cvd1`); the recipe defaults to `seventeen` (`android-17.0.0_r1` + `lineage-24.0`), with `sixteen-qpr2` (PixelOS 16.2) selectable | Recipe only, **not being built** | Unverified | Unverified | Same as LineageOS | Same as LineageOS; no Pixel-exclusive or Google-certified features | Transaction model only | **Planned** (listed in the app, cannot be created) |
 
 The GrapheneOS-derived row must not be interpreted as official GrapheneOS device support. Likewise, the LineageOS and PixelOS rows are unofficial CarbonHV builds, not official LineageOS or PixelOS devices or releases. The Ubuntu Touch row means the intended guest is the genuine mobile session, not generic Ubuntu desktop.
 

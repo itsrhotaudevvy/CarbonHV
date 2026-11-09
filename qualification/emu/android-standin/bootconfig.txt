@@ -1,0 +1,78 @@
+# Bootloader-side bootconfig for the AOSP Cuttlefish stand-in guest (NOT GrapheneOS) on the
+# emulated engine. `carbonctl emu boot-assets --bootconfig` appends these after vendor_boot's own
+# section (`androidboot.hardware=cutf_cvm`, the vsock buffer size).
+#
+# On a real Cuttlefish launch these come from two places, and this file reproduces both for a
+# direct-kernel boot that has neither:
+#   1. assemble_cvd: base/cvd/cuttlefish/host/commands/assemble_cvd/bootconfig_args.cpp and
+#      host/libs/vm_manager/qemu_manager.cpp (ConfigureBootDevices, ConfigureGraphics), with the
+#      values Cuttlefish picks for vm_manager=qemu_cli, arm64 Linux host, gpu_mode=guest_swiftshader.
+#   2. Cuttlefish's U-Boot, which this boot skips: slot, normal-vs-recovery, and verified-boot state.
+#
+# Nothing here claims a security property the VM does not have: the verified-boot state is
+# orange/unlocked because there is no root of trust, and the secure HALs are the guest-side
+# non-secure implementations Cuttlefish itself ships for that case.
+
+# --- assemble_cvd: console (ConsoleBootconfig). hvc1 is the Android serial console. ---
+androidboot.console=hvc1
+androidboot.serialconsole=1
+
+# --- qemu_manager.cpp ConfigureBootDevices, arm64 Linux host: QEMU virt's highmem PCIe ECAM. ---
+androidboot.boot_devices=4010000000.pcie
+
+# --- qemu_manager.cpp ConfigureGraphics, GpuMode::GuestSwiftshader (2D virtio-gpu-pci). ---
+# VK_API_VERSION_1_2 = (1 << 22) | (2 << 12)
+androidboot.cpuvulkan.version=4202496
+androidboot.hardware.gralloc=minigbm
+androidboot.hardware.hwcomposer=ranchu
+androidboot.hardware.hwcomposer.display_finder_mode=drm
+androidboot.hardware.hwcomposer.display_framebuffer_format=rgba
+androidboot.hardware.egl=angle
+androidboot.hardware.vulkan=pastel
+androidboot.opengles.version=196609
+
+# --- bootconfig_args.cpp BootconfigArgsFromConfig ---
+androidboot.serialno=CARBONHVSTANDIN01
+androidboot.ddr_size=3072MB
+androidboot.lcd_density=320
+androidboot.setupwizard_mode=DISABLED
+androidboot.enable_bootanimation=1
+androidboot.enable_confirmationui=0
+androidboot.audio.tinyalsa.ignore_output=true
+androidboot.audio.tinyalsa.simulate_input=true
+androidboot.fstab_suffix=cf.f2fs.hctr2
+androidboot.wifi_mac_prefix=5554
+# Cuttlefish uses 50 for a guest the host cannot run natively; TCG is that case.
+androidboot.hw_timeout_multiplier=50
+androidboot.vendor.apex.com.android.hardware.keymint=com.android.hardware.keymint.rust_nonsecure
+androidboot.vendor.apex.com.android.hardware.gatekeeper=com.android.hardware.gatekeeper.nonsecure
+androidboot.vendor.apex.com.android.hardware.secure_element=com.android.hardware.secure_element
+androidboot.vendor.apex.com.android.hardware.strongbox=none
+androidboot.vendor.apex.com.android.hardware.weaver=none
+androidboot.vendor.apex.com.android.hardware.graphics.composer=com.android.hardware.graphics.composer.ranchu
+androidboot.wifi_impl=virt_wifi
+androidboot.vendor.apex.com.google.emulated.camera.provider.hal=com.google.emulated.camera.provider.hal
+androidboot.cuttlefish_service_bluetooth_checker=false
+# Cuttlefish sets this per instance (instance.openthread_node_id(), 1 for the first). Without it
+# the Thread network HAL aborts with "Check failed: node_id > 0" and init flags
+# sys.init.updatable_crashing (seen on the first boot, 2026-11-09).
+androidboot.openthread_node_id=1
+# Cuttlefish passes its lights server port (instance.lights_server_port()). The guest lights HAL
+# binds a vsock server on it, and with the key absent it binds port 0: vsock ports below 1024 need
+# CAP_NET_BIND_SERVICE, so it aborts with EACCES, and system_server waits for ILights forever
+# (first boot, 2026-11-09: boot animation for 20+ minutes, no boot_completed). No host connects
+# here (no vsock device on an unrooted phone); the bind only has to succeed.
+androidboot.vsock_lights_port=6900
+androidboot.vsock_lights_cid=3
+# The vendor partition has no com.google.cf.vulkan.swiftshader APEX, so assemble_cvd would not
+# set androidboot.vendor.apex.com.google.cf.vulkan either.
+
+# --- What Cuttlefish's U-Boot adds, and this direct-kernel boot must therefore supply. ---
+androidboot.slot_suffix=_a
+# vendor_boot carries the recovery ramdisk too; without this, init boots recovery.
+androidboot.force_normal_boot=1
+androidboot.verifiedbootstate=orange
+androidboot.vbmeta.device_state=unlocked
+# The VM has no nested virtualization to offer the guest.
+androidboot.hypervisor.vm.supported=0
+androidboot.hypervisor.protected_vm.supported=0

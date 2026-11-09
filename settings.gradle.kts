@@ -22,3 +22,5 @@ include(":android:app")
 
 // Gate 3 qualification probe for the emulated engine (never shipped; see qualification/emu/).
 include(":qualification:emu:probe-app")
+// Qualification viewer: an emulated guest on the phone screen from the app sandbox (never shipped).
+include(":qualification:emu:viewer-app")

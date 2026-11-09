@@ -11,25 +11,20 @@ The first two guests are:
 - a **CarbonHV-maintained GrapheneOS-derived** ARM64 virtual-device build (Android 17 line). It is not an official GrapheneOS target or release;
 - **Ubuntu Touch with Lomiri** (24.04 series), adapted as a real mobile Linux guest rather than a generic desktop.
 
-Additional Android-derived ROMs are being ported on the same CVD1 overlay ([ADR-016](docs/ARCHITECTURE.md)):
-
-- **LineageOS**, unofficial: `lineage-24.0` (Android 17) by default, or `lineage-23.2` (Android 16);
-- **PixelOS**, unofficial: `seventeen` (Android 17) by default, or `sixteen-qpr2` (PixelOS 16.2).
-
-Both are recipe-only today ([`guest/lineageos`](guest/lineageos), [`guest/pixelos`](guest/pixelos)).
+**LineageOS** and **PixelOS** (unofficial ports on the same CVD1 overlay, [ADR-016](docs/ARCHITECTURE.md)) are **planned**: the app lists them but cannot create them, and their recipes ([`guest/lineageos`](guest/lineageos), [`guest/pixelos`](guest/pixelos)) are not built. No GrapheneOS-derived image has been built either: an AOSP build needs a ≈400 GB builder that this project does not have.
 
 > [!IMPORTANT]
-> **Pre-release.** CarbonHV is a development milestone, not a supported release. The source, contracts and tooling are verified in CI. **No guest has yet booted on a physical phone through CarbonHV**, and every physical host is `EXPERIMENTAL` or `UNSUPPORTED`. See the [support matrix](docs/SUPPORT_MATRIX.md) for exactly what is proven and what is still hardware-gated. CarbonHV never falls back to software CPU emulation. Phones whose hypervisor is unreachable from apps may run a guest in an explicitly chosen **Emulated** engine instead (see below).
+> **Pre-release.** CarbonHV is a development milestone, not a supported release. The source, contracts and tooling are verified in CI. **It now works on a real phone in the Emulated engine:** an Android guest (the AOSP Cuttlefish stand-in, *not* GrapheneOS) boots on a stock, unrooted Redmi and is drawn on the phone's own screen by an app. It reaches `system_server` and the boot animation; it does not yet reach the home screen in reasonable time ([report](qualification/emu/reports/2026-11-09-android-standin-boot-on-phone.md)). Every physical host is `EXPERIMENTAL` or `UNSUPPORTED`. See the [support matrix](docs/SUPPORT_MATRIX.md) for exactly what is proven and what is still hardware-gated. CarbonHV never falls back to software CPU emulation. Phones whose hypervisor is unreachable from apps may run a guest in an explicitly chosen **Emulated** engine instead (see below).
 
 ## Screenshots
 
-Captured from the debug APK on an Android 16 (API 36) arm64 emulator. A stock build has no CarbonHV host integration, so opening a VM fails closed as designed.
+Captured on a Redmi `kunzite` (Android 16, stock). The guest view is the AOSP stand-in guest booting in the Emulated engine, drawn by the qualification viewer app. The manager app's own sessions still need the `:vm` service, so opening a VM there fails closed as designed.
 
-| Library | Systems | New VM | Stock phone |
+| Guest on the phone | Library | Systems | New VM |
 | :---: | :---: | :---: | :---: |
-| <img src="docs/screenshots/02-library.png" width="200" alt="Library with GrapheneOS-derived, LineageOS, PixelOS and Ubuntu Touch instances"> | <img src="docs/screenshots/03-systems.png" width="200" alt="Systems catalog"> | <img src="docs/screenshots/04-create.png" width="200" alt="Create a LineageOS virtual machine"> | <img src="docs/screenshots/05-session-host-unavailable.png" width="200" alt="Host integration unavailable"> |
-| **Settings** | **Empty library** | **Dark library** | **Dark systems** |
-| <img src="docs/screenshots/06-settings.png" width="200" alt="Settings: host compatibility, privacy defaults, about"> | <img src="docs/screenshots/01-library-empty.png" width="200" alt="Empty library"> | <img src="docs/screenshots/07-library-dark.png" width="200" alt="Library in dark theme"> | <img src="docs/screenshots/08-systems-dark.png" width="200" alt="Systems in dark theme"> |
+| <img src="docs/screenshots/09-emulated-guest-on-phone.jpg" width="200" alt="The AOSP stand-in guest's boot animation on the phone's own screen"> | <img src="docs/screenshots/02-library.jpg" width="200" alt="Library: Ubuntu Touch and GrapheneOS-derived VMs as tiles with status and memory"> | <img src="docs/screenshots/03-systems.jpg" width="200" alt="Systems: GrapheneOS-derived and Ubuntu Touch, with LineageOS and PixelOS planned"> | <img src="docs/screenshots/04-create.jpg" width="200" alt="New VM with a 3, 4 or 6 GB memory choice"> |
+| **Settings** | **Empty library** | **Stock session** | |
+| <img src="docs/screenshots/06-settings.jpg" width="200" alt="Settings: host compatibility, sharing defaults, about"> | <img src="docs/screenshots/01-library-empty.jpg" width="200" alt="Empty library"> | <img src="docs/screenshots/05-session-host-unavailable.jpg" width="200" alt="Host integration unavailable"> | |
 
 ## Phones and SoCs
 
@@ -51,7 +46,7 @@ On stock phones where Android denies apps every hypervisor device (the probed Re
 - CPU-bound work is **much slower than native**; graphics stays hardware-accelerated. Performance numbers are not claimed until they are measured on hardware.
 - It shares the CVD1 guest ABI with the hardware path, so the same guest image and disks work on both.
 
-The planning code (`crates/carbon-emu`) and the QEMU build recipe (`emu/qemu/`) are verified in source and CI; **no emulated guest has booted on a phone yet**, and the engine stays `EXPERIMENTAL`. See the support matrix (§2d) for exactly what is and is not proven.
+**It works on a phone.** On the stock Redmi `kunzite`, the AOSP stand-in guest boots in this engine inside an ordinary app (`untrusted_app`), and its frames are drawn on the phone's screen (above). It reaches `system_server` in about 5 minutes; reaching the home screen is still too slow, so the engine stays `EXPERIMENTAL`. See the support matrix (§2d) for exactly what is and is not proven.
 
 ### Near-native performance
 

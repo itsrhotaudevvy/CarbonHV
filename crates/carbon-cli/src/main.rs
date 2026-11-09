@@ -28,6 +28,9 @@ usage:
   carbonctl guest kernel-config <android|ubuntu-touch> <config-or-fragment>...
   carbonctl backup verify <manifest>
   carbonctl emu plan --facts <facts.json> [options]
+  carbonctl emu boot-assets --boot <boot.img> --vendor-boot <vendor_boot.img> --out <dir>
+                            [--init-boot <init_boot.img>] [--bootconfig <file>]
+                            [--append <kernel-param>]...
 
 emu plan options:
   --profile <balanced|hardened|low-memory>     planning profile (default: balanced)
@@ -39,11 +42,122 @@ emu plan options:
   --no-audio                                   no virtio-snd device
   --disks <n>                                  dry-run disk count (default: 6)
 
+`emu boot-assets` unpacks Android v3/v4 boot images into the kernel, initrd and command line
+QEMU's direct-kernel boot needs: <out>/kernel, <out>/initrd (vendor ramdisk, generic ramdisk,
+then vendor_boot's bootconfig plus one `key=value` per line of --bootconfig) and
+<out>/cmdline. It reads and writes local files only.
+
 `emu plan` is a dry run: it prints the exact QEMU argv the `:vm` service would run, using
 placeholder descriptor numbers. No VM is started and nothing is read from the phone.
 
 exit codes: 0 ok, 2 I/O, 3 contract gap, 5 performance gap, 64 usage, 65 plan refused
 ";
+
+/// `carbonctl emu boot-assets`: the engine's own boot-image code, run on the build host so a
+/// qualification boot uses exactly the initrd the `:vm` service would build.
+fn emu_boot_assets(args: &[String]) -> ExitCode {
+    use carbon_emu::bootimg::{BootImage, VendorBootImage, assemble, kernel_view_of_bootconfig};
+
+    let (mut boot, mut init_boot, mut vendor_boot, mut bootconfig, mut out) =
+        (None, None, None, None, None);
+    let mut append: Vec<String> = Vec::new();
+    let mut index = 0;
+    while index < args.len() {
+        let Some(value) = args.get(index + 1).cloned() else {
+            eprintln!("{} needs a value", args[index]);
+            return ExitCode::from(EXIT_USAGE);
+        };
+        match args[index].as_str() {
+            "--boot" => boot = Some(PathBuf::from(value)),
+            "--init-boot" => init_boot = Some(PathBuf::from(value)),
+            "--vendor-boot" => vendor_boot = Some(PathBuf::from(value)),
+            "--bootconfig" => bootconfig = Some(PathBuf::from(value)),
+            "--out" => out = Some(PathBuf::from(value)),
+            "--append" => append.push(value),
+            other => {
+                eprintln!("unknown emu boot-assets option {other}");
+                return ExitCode::from(EXIT_USAGE);
+            }
+        }
+        index += 2;
+    }
+    let (Some(boot), Some(vendor_boot), Some(out)) = (boot, vendor_boot, out) else {
+        eprintln!("emu boot-assets needs --boot, --vendor-boot and --out");
+        return ExitCode::from(EXIT_USAGE);
+    };
+    let read = |path: &PathBuf| {
+        fs::read(path).map_err(|error| eprintln!("cannot read {}: {error}", path.display()))
+    };
+    let Ok(boot_bytes) = read(&boot) else {
+        return ExitCode::from(EXIT_IO);
+    };
+    let Ok(vendor_bytes) = read(&vendor_boot) else {
+        return ExitCode::from(EXIT_IO);
+    };
+    let init_bytes = match init_boot.as_ref().map(read) {
+        None => None,
+        Some(Ok(bytes)) => Some(bytes),
+        Some(Err(())) => return ExitCode::from(EXIT_IO),
+    };
+    let params_text = match bootconfig.as_ref().map(fs::read_to_string) {
+        None => String::new(),
+        Some(Ok(text)) => text,
+        Some(Err(error)) => {
+            eprintln!("cannot read bootconfig file: {error}");
+            return ExitCode::from(EXIT_IO);
+        }
+    };
+    let params: Vec<&str> = params_text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect();
+
+    let parsed = (|| {
+        let boot = BootImage::parse(&boot_bytes)?;
+        let init = init_bytes.as_deref().map(BootImage::parse).transpose()?;
+        let vendor = VendorBootImage::parse(&vendor_bytes)?;
+        assemble(&boot, init.as_ref(), &vendor, &params)
+    })();
+    let mut assets = match parsed {
+        Ok(assets) => assets,
+        Err(error) => {
+            eprintln!("cannot assemble boot assets: {}", error.message());
+            return ExitCode::from(EXIT_CONTRACT);
+        }
+    };
+    for param in append {
+        assets.kernel_cmdline.push(' ');
+        assets.kernel_cmdline.push_str(&param);
+    }
+    let Some(seen) = kernel_view_of_bootconfig(&assets.initrd) else {
+        eprintln!("assembled initrd carries no bootconfig block the kernel would accept");
+        return ExitCode::from(EXIT_CONTRACT);
+    };
+    let seen_lines = seen
+        .split(|byte| *byte == b'\n')
+        .filter(|line| !line.is_empty() && line.iter().any(|byte| *byte != 0))
+        .count();
+
+    if let Err(error) = fs::create_dir_all(&out)
+        .and_then(|_| fs::write(out.join("kernel"), &assets.kernel))
+        .and_then(|_| fs::write(out.join("initrd"), &assets.initrd))
+        .and_then(|_| fs::write(out.join("cmdline"), format!("{}\n", assets.kernel_cmdline)))
+        .and_then(|_| fs::write(out.join("bootconfig"), seen))
+    {
+        eprintln!("cannot write boot assets: {error}");
+        return ExitCode::from(EXIT_IO);
+    }
+    println!(
+        "kernel {} bytes, initrd {} bytes, bootconfig {} bytes ({seen_lines} keys) -> {}",
+        assets.kernel.len(),
+        assets.initrd.len(),
+        seen.len(),
+        out.display()
+    );
+    println!("cmdline: {}", assets.kernel_cmdline);
+    ExitCode::SUCCESS
+}
 
 /// `carbonctl guest kernel-config <family> <config-or-fragment>...`
 /// Files are merged in order. Exit 3: CVD1 contract gap; exit 5: near-native performance gap.
@@ -345,6 +459,10 @@ fn main() -> ExitCode {
                     ExitCode::from(EXIT_CONTRACT)
                 }
             }
+        }
+        ["emu", "boot-assets", rest @ ..] => {
+            let rest: Vec<String> = rest.iter().map(|arg| (*arg).to_owned()).collect();
+            emu_boot_assets(&rest)
         }
         ["emu", "plan", rest @ ..] => {
             let rest: Vec<String> = rest.iter().map(|arg| (*arg).to_owned()).collect();

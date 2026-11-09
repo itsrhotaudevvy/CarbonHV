@@ -22,7 +22,12 @@ data class CatalogBundle(
     val platform: String = "",
     /** Built by CarbonHV from a project that does not publish this virtual device itself. */
     val unofficial: Boolean = false,
+    /** Listed so users can see it is coming, but no image is built yet, so it cannot be created. */
+    val planned: Boolean = false,
 )
+
+/** Guest RAM a user can pick for a new VM. */
+val MEMORY_OPTIONS_MIB: List<Int> = listOf(3072, 4096, 6144)
 
 /** "4 GB" for whole gibibytes, otherwise "3.5 GB"; never fractional noise like "3.999". */
 fun formatMemory(mib: Int): String {
@@ -35,6 +40,7 @@ data class VmInstance(
     val name: String,
     val bundleId: String,
     val sessionState: SessionUiState = SessionUiState.Stopped,
+    val memoryMiB: Int = 4096,
 )
 
 data class AppState(
@@ -43,6 +49,7 @@ data class AppState(
     val instances: List<VmInstance>,
     val createBundleId: String? = null,
     val createName: String = "",
+    val createMemoryMiB: Int = 4096,
     val activeInstanceId: String? = null,
     val recoveryFailure: FailureKind? = null,
 ) {
@@ -51,7 +58,8 @@ data class AppState(
             val name = createName.trim()
             return createBundleId != null &&
                 name.isNotEmpty() &&
-                catalog.any { it.id == createBundleId } &&
+                createMemoryMiB in MEMORY_OPTIONS_MIB &&
+                catalog.any { it.id == createBundleId && !it.planned } &&
                 instances.none { it.name.equals(name, ignoreCase = true) }
         }
 
@@ -75,6 +83,7 @@ data class AppState(
                     recommendedMemoryMiB = 4096,
                     platform = "LineageOS 24 · Android 17",
                     unofficial = true,
+                    planned = true,
                 ),
                 CatalogBundle(
                     id = "pixelos",
@@ -84,6 +93,7 @@ data class AppState(
                     recommendedMemoryMiB = 4096,
                     platform = "PixelOS 17 · Android 17",
                     unofficial = true,
+                    planned = true,
                 ),
                 CatalogBundle(
                     id = "ubuntu-touch",
@@ -105,6 +115,7 @@ sealed interface AppEvent {
     data object OpenSettings : AppEvent
     data class OpenCreate(val bundleId: String) : AppEvent
     data class CreateNameChanged(val name: String) : AppEvent
+    data class CreateMemoryChanged(val memoryMiB: Int) : AppEvent
     data object ConfirmCreate : AppEvent
     data class OpenSession(val instanceId: String) : AppEvent
     data class SessionStateChanged(val instanceId: String, val state: SessionUiState) : AppEvent
@@ -120,11 +131,13 @@ fun reduceApp(state: AppState, event: AppEvent): AppState = when (event) {
     )
     AppEvent.OpenCatalog -> state.copy(screen = AppScreen.Catalog, recoveryFailure = null)
     AppEvent.OpenSettings -> state.copy(screen = AppScreen.Settings, recoveryFailure = null)
-    is AppEvent.OpenCreate -> if (state.catalog.any { it.id == event.bundleId }) {
+    is AppEvent.OpenCreate -> if (state.catalog.any { it.id == event.bundleId && !it.planned }) {
+        val bundle = state.catalog.first { it.id == event.bundleId }
         state.copy(
             screen = AppScreen.Create,
             createBundleId = event.bundleId,
             createName = "",
+            createMemoryMiB = bundle.recommendedMemoryMiB,
             recoveryFailure = null,
         )
     } else {
@@ -135,12 +148,19 @@ fun reduceApp(state: AppState, event: AppEvent): AppState = when (event) {
     } else {
         state
     }
+    is AppEvent.CreateMemoryChanged ->
+        if (state.screen == AppScreen.Create && event.memoryMiB in MEMORY_OPTIONS_MIB) {
+            state.copy(createMemoryMiB = event.memoryMiB)
+        } else {
+            state
+        }
     AppEvent.ConfirmCreate -> if (state.screen == AppScreen.Create && state.canCreate) {
         val nextIndex = (state.instances.mapNotNull { it.id.removePrefix("vm-").toIntOrNull() }.maxOrNull() ?: 0) + 1
         val instance = VmInstance(
             id = "vm-$nextIndex",
             name = state.createName.trim(),
             bundleId = requireNotNull(state.createBundleId),
+            memoryMiB = state.createMemoryMiB,
         )
         state.copy(
             screen = AppScreen.Library,
@@ -174,9 +194,9 @@ fun reduceApp(state: AppState, event: AppEvent): AppState = when (event) {
  * The static catalog is not saved; restored instances whose bundle disappeared are dropped.
  */
 object AppStateCodec {
-    private const val FIELDS_PER_INSTANCE = 4
-    private const val HEADER = 6
-    private const val VERSION = "1"
+    private const val FIELDS_PER_INSTANCE = 5
+    private const val HEADER = 7
+    private const val VERSION = "2"
 
     fun encode(state: AppState): List<String> = buildList {
         add(VERSION)
@@ -185,11 +205,13 @@ object AppStateCodec {
         add(state.createName)
         add(state.activeInstanceId.orEmpty())
         add(state.recoveryFailure?.name.orEmpty())
+        add(state.createMemoryMiB.toString())
         state.instances.forEach { instance ->
             add(instance.id)
             add(instance.name)
             add(instance.bundleId)
             add(instance.sessionState.name)
+            add(instance.memoryMiB.toString())
         }
     }
 
@@ -198,13 +220,15 @@ object AppStateCodec {
             return base
         }
         val bundleIds = base.catalog.map { it.id }.toSet()
-        val instances = saved.drop(HEADER).chunked(FIELDS_PER_INSTANCE).mapNotNull { (id, name, bundleId, session) ->
+        val instances = saved.drop(HEADER).chunked(FIELDS_PER_INSTANCE).mapNotNull { fields ->
+            val (id, name, bundleId, session, memory) = fields
             if (bundleId !in bundleIds) return@mapNotNull null
             VmInstance(
                 id = id,
                 name = name,
                 bundleId = bundleId,
                 sessionState = enumValueOrNull<SessionUiState>(session) ?: SessionUiState.Stopped,
+                memoryMiB = memory.toIntOrNull()?.takeIf { it in MEMORY_OPTIONS_MIB } ?: 4096,
             )
         }
         val activeId = saved[4].ifEmpty { null }?.takeIf { id -> instances.any { it.id == id } }
@@ -214,6 +238,7 @@ object AppStateCodec {
             instances = instances,
             createBundleId = saved[2].ifEmpty { null }?.takeIf { it in bundleIds },
             createName = saved[3],
+            createMemoryMiB = saved[6].toIntOrNull()?.takeIf { it in MEMORY_OPTIONS_MIB } ?: 4096,
             activeInstanceId = activeId,
             recoveryFailure = enumValueOrNull<FailureKind>(saved[5]),
         )

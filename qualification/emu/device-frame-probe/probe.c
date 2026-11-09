@@ -12,8 +12,10 @@
  * Its wire format is the same ui/android-proto.h the backend ships, extracted from the patch at
  * build time, so the probe cannot drift from the producer.
  *
- * usage: probe <frame-out-dir> [--max-frames N] -- <qemu> [qemu args...]
+ * usage: probe <frame-out-dir> [--max-frames N] [--interval S] -- <qemu> [qemu args...]
  * The QEMU arguments are passed through unchanged; the probe adds `-display android,frame-fd=3`.
+ * --interval S keeps at most one frame per S seconds, so a boot that takes many minutes leaves
+ * frames spread over the whole boot instead of the first N updates of the first screen.
  */
 #define _GNU_SOURCE
 #include <android/hardware_buffer.h>
@@ -26,6 +28,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "ui/android-proto.h"
@@ -167,6 +170,14 @@ static void drain_handle(int fd)
     }
 }
 
+static double now_seconds(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
+}
+
 static volatile pid_t qemu_pid;
 
 /* Running under `timeout` must not leave the emulator behind: take it down with us. */
@@ -189,11 +200,13 @@ int main(int argc, char **argv)
     int i, frame_fd = -1, status = 0, qemu_argc = 0;
     pid_t child = 0;
     uint32_t saved = 0, width = 0, height = 0;
-    char *qemu_argv_alloc[64];
+    double interval = 0.0, last_saved = -1.0;
+    char **qemu_argv_alloc = NULL;
     uint8_t incoming[ANDROID_PROTO_MAX_PAYLOAD];
 
     if (argc < 4) {
-        fprintf(stderr, "usage: %s <frame-out-dir> [--max-frames N] -- <qemu> [args...]\n",
+        fprintf(stderr,
+                "usage: %s <frame-out-dir> [--max-frames N] [--interval S] -- <qemu> [args...]\n",
                 argv[0]);
         return 64;
     }
@@ -201,6 +214,8 @@ int main(int argc, char **argv)
     for (i = 2; i < argc; i++) {
         if (strcmp(argv[i], "--max-frames") == 0 && i + 1 < argc) {
             max_frames = (uint32_t)strtoul(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--interval") == 0 && i + 1 < argc) {
+            interval = strtod(argv[++i], NULL);
         } else if (strcmp(argv[i], "--") == 0) {
             qemu_argv = &argv[i + 1];
             qemu_argc = argc - (i + 1);
@@ -211,9 +226,11 @@ int main(int argc, char **argv)
         fprintf(stderr, "carbon-frame-probe: no command after --\n");
         return 64;
     }
-    if (qemu_argc + 2 > (int)(sizeof(qemu_argv_alloc) / sizeof(qemu_argv_alloc[0]))) {
-        log_line("too many QEMU arguments");
-        return 64;
+    /* A Cuttlefish-shaped command line has dozens of console ports, so no fixed cap. */
+    qemu_argv_alloc = calloc((size_t)qemu_argc + 3, sizeof(*qemu_argv_alloc));
+    if (!qemu_argv_alloc) {
+        log_line("out of memory for QEMU arguments");
+        return 1;
     }
     mkdir(dir, 0775);
 
@@ -308,8 +325,11 @@ int main(int argc, char **argv)
                     (android_get_u32(payload + 24) & ANDROID_FRAME_FLAG_HAS_FENCE) != 0,
             };
 
-            if (saved < max_frames) {
-                handle_frame(frame_fd, dir, &header, &saved, max_frames);
+            if (saved < max_frames &&
+                (last_saved < 0 || now_seconds() - last_saved >= interval)) {
+                if (handle_frame(frame_fd, dir, &header, &saved, max_frames) == 0) {
+                    last_saved = now_seconds();
+                }
             } else {
                 /* Keep reading: the handle is a separate datagram and must be taken off the
                  * socket, or every later datagram is off by one. */

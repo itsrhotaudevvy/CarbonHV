@@ -16,6 +16,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -37,12 +42,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilledIconButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -51,6 +53,9 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -65,6 +70,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -139,11 +145,8 @@ private fun ReadableWidth(content: @Composable () -> Unit) {
 @Composable
 private fun TopLevelScaffold(state: AppState, dispatch: (AppEvent) -> Unit) {
     val compact = isCompactHeight()
-    val scrollBehavior = if (compact) {
-        TopAppBarDefaults.pinnedScrollBehavior()
-    } else {
-        TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    }
+    // A pinned, single-line bar: the large collapsing bar spent a third of the screen on a title.
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val title = when (state.screen) {
         AppScreen.Catalog -> "Systems"
         AppScreen.Settings -> "Settings"
@@ -158,22 +161,18 @@ private fun TopLevelScaffold(state: AppState, dispatch: (AppEvent) -> Unit) {
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            if (compact) {
-                TopAppBar(
-                    title = { Text(title) },
-                    actions = {
-                        if (showNewVm) {
-                            IconButton(onClick = { dispatch(AppEvent.OpenCatalog) }) {
-                                Icon(Icons.Filled.Add, contentDescription = "New VM")
-                            }
+            TopAppBar(
+                title = { Text(title, style = MaterialTheme.typography.titleLarge) },
+                actions = {
+                    if (showNewVm && compact) {
+                        IconButton(onClick = { dispatch(AppEvent.OpenCatalog) }) {
+                            Icon(Icons.Filled.Add, contentDescription = "New VM")
                         }
-                    },
-                    scrollBehavior = scrollBehavior,
-                    colors = barColors,
-                )
-            } else {
-                LargeTopAppBar(title = { Text(title) }, scrollBehavior = scrollBehavior, colors = barColors)
-            }
+                    }
+                },
+                scrollBehavior = scrollBehavior,
+                colors = barColors,
+            )
         },
         bottomBar = { MainNavigation(state.screen, dispatch) },
         floatingActionButton = {
@@ -221,15 +220,16 @@ private fun MainNavigation(screen: AppScreen, dispatch: (AppEvent) -> Unit) {
 }
 
 /**
- * A symbolic icon per guest OS. These are CarbonHV's own metaphors (hardened, community Android,
- * Pixel-style polish, touch-first Linux), not the projects' logos or trademarks.
+ * A glyph per guest OS, drawn for CarbonHV (res/drawable/ic_os_*.xml): a shield around a graphene
+ * hexagon, a lineage tree, a pixel grid, and a shell prompt under a touch ripple. They are
+ * CarbonHV's own symbols, not the projects' logos or trademarks.
  */
 @DrawableRes
 internal fun osIcon(bundleId: String): Int = when (bundleId) {
-    "grapheneos" -> R.drawable.ic_shield
-    "lineageos" -> R.drawable.ic_android
-    "pixelos" -> R.drawable.ic_auto_awesome
-    "ubuntu-touch" -> R.drawable.ic_touch_app
+    "grapheneos" -> R.drawable.ic_os_graphene
+    "lineageos" -> R.drawable.ic_os_lineage
+    "pixelos" -> R.drawable.ic_os_pixel
+    "ubuntu-touch" -> R.drawable.ic_os_ubuntu_touch
     else -> R.drawable.ic_devices
 }
 
@@ -265,22 +265,17 @@ private fun sharingIcon(bundle: CatalogBundle): Painter =
     if (bundle.integrationProfile == "Private") rememberVectorPainter(Icons.Filled.Lock) else painterResource(R.drawable.ic_tune)
 
 @Composable
-private fun BundleFacts(bundle: CatalogBundle) {
-    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-        Fact(sharingIcon(bundle), bundle.integrationProfile)
-        Fact(painterResource(R.drawable.ic_memory), formatMemory(bundle.recommendedMemoryMiB))
-    }
-}
+private fun UnofficialTag() = Tag("Unofficial")
 
 @Composable
-private fun UnofficialTag() {
+private fun Tag(text: String) {
     Surface(
         shape = RoundedCornerShape(6.dp),
         color = MaterialTheme.colorScheme.tertiaryContainer,
         contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
     ) {
         Text(
-            "Unofficial",
+            text,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp),
             style = MaterialTheme.typography.labelSmall,
         )
@@ -332,6 +327,67 @@ private fun listPadding(padding: PaddingValues, bottomExtra: Int = 16) = Padding
     bottom = padding.calculateBottomPadding() + bottomExtra.dp,
 )
 
+/** Two columns on a phone, more on wide screens: tiles fill the width instead of thin rows. */
+private val TILE_MIN_WIDTH = 156.dp
+
+@Composable
+private fun gridPadding(padding: PaddingValues, bottomExtra: Int = 16) = PaddingValues(
+    start = 12.dp,
+    end = 12.dp,
+    top = padding.calculateTopPadding() + 4.dp,
+    bottom = padding.calculateBottomPadding() + bottomExtra.dp,
+)
+
+/**
+ * One OS tile: the glyph large on its accent colour across the top, then two short lines. Used for
+ * both instances and systems so the two screens read as one design.
+ */
+@Composable
+private fun OsCard(
+    bundleId: String,
+    title: String,
+    subtitle: String,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier,
+    tag: String? = null,
+    footer: @Composable () -> Unit = {},
+) {
+    val accent = osAccent(bundleId)
+    Card(
+        onClick = { onClick?.invoke() },
+        enabled = onClick != null,
+        modifier = modifier.fillMaxWidth().alpha(if (onClick == null) 0.6f else 1f),
+        colors = cardColors(),
+        shape = RoundedCornerShape(20.dp),
+    ) {
+        Box(
+            Modifier.fillMaxWidth().aspectRatio(1.6f).background(accent.container),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(osIcon(bundleId)),
+                contentDescription = null,
+                tint = accent.content,
+                modifier = Modifier.size(48.dp),
+            )
+            if (tag != null) {
+                Box(Modifier.align(Alignment.TopEnd).padding(8.dp)) { Tag(tag) }
+            }
+        }
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            footer()
+        }
+    }
+}
+
 @Composable
 private fun LibraryScreen(state: AppState, dispatch: (AppEvent) -> Unit, padding: PaddingValues) {
     if (state.instances.isEmpty()) {
@@ -346,34 +402,27 @@ private fun LibraryScreen(state: AppState, dispatch: (AppEvent) -> Unit, padding
         )
         return
     }
-    LazyColumn(contentPadding = listPadding(padding, bottomExtra = 88), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(TILE_MIN_WIDTH),
+        contentPadding = gridPadding(padding, bottomExtra = 88),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         items(state.instances, key = { it.id }) { instance ->
             val bundle = state.catalog.firstOrNull { it.id == instance.bundleId }
-            Card(
+            OsCard(
+                bundleId = instance.bundleId,
+                title = instance.name,
+                subtitle = instanceSubtitle(instance, bundle),
                 onClick = { dispatch(AppEvent.OpenSession(instance.id)) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = cardColors(),
             ) {
                 Row(
-                    modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                    Modifier.fillMaxWidth().padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    OsTile(instance.bundleId)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Text(instance.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            instanceSubtitle(instance, bundle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        StatusDot(instance.sessionState)
-                    }
-                    FilledIconButton(onClick = { dispatch(AppEvent.OpenSession(instance.id)) }) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = "Open ${instance.name}")
-                    }
+                    StatusDot(instance.sessionState)
+                    Fact(painterResource(R.drawable.ic_memory), formatMemory(instance.memoryMiB))
                 }
             }
         }
@@ -390,33 +439,37 @@ internal fun instanceSubtitle(instance: VmInstance, bundle: CatalogBundle?): Str
 
 @Composable
 private fun CatalogScreen(state: AppState, dispatch: (AppEvent) -> Unit, padding: PaddingValues) {
-    LazyColumn(contentPadding = listPadding(padding), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(state.catalog, key = { it.id }) { bundle ->
-            Card(
-                onClick = { dispatch(AppEvent.OpenCreate(bundle.id)) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = cardColors(),
-            ) {
-                Row(
-                    modifier = Modifier.padding(14.dp).fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    OsTile(bundle.id)
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        BundleTitle(bundle)
-                        Text(
-                            bundle.platform,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        BundleFacts(bundle)
-                    }
-                    FilledTonalIconButton(onClick = { dispatch(AppEvent.OpenCreate(bundle.id)) }) {
-                        Icon(Icons.Filled.Add, contentDescription = "Create ${bundle.name} VM")
-                    }
-                }
-            }
+    val (ready, planned) = state.catalog.partition { !it.planned }
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(TILE_MIN_WIDTH),
+        contentPadding = gridPadding(padding),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items(ready, key = { it.id }) { bundle -> CatalogTile(bundle, dispatch) }
+        if (planned.isNotEmpty()) {
+            item(span = { GridItemSpan(maxLineSpan) }) { SectionHeader("Planned") }
+            items(planned, key = { it.id }) { bundle -> CatalogTile(bundle, dispatch) }
+        }
+    }
+}
+
+@Composable
+private fun CatalogTile(bundle: CatalogBundle, dispatch: (AppEvent) -> Unit) {
+    OsCard(
+        bundleId = bundle.id,
+        title = bundle.name,
+        subtitle = bundle.platform,
+        onClick = if (bundle.planned) null else { { dispatch(AppEvent.OpenCreate(bundle.id)) } },
+        tag = when {
+            bundle.planned -> "Planned"
+            bundle.unofficial -> "Unofficial"
+            else -> null
+        },
+    ) {
+        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Fact(sharingIcon(bundle), bundle.integrationProfile)
+            Fact(painterResource(R.drawable.ic_memory), formatMemory(bundle.recommendedMemoryMiB))
         }
     }
 }
@@ -458,7 +511,7 @@ private fun CreateScreen(state: AppState, dispatch: (AppEvent) -> Unit) {
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
-                            BundleFacts(bundle)
+                            Fact(sharingIcon(bundle), bundle.integrationProfile)
                         }
                     }
                 }
@@ -474,9 +527,17 @@ private fun CreateScreen(state: AppState, dispatch: (AppEvent) -> Unit) {
                         imeAction = ImeAction.Done,
                     ),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Fact(painterResource(R.drawable.ic_developer_board), "Hardware virtualization")
-                    Fact(painterResource(R.drawable.ic_bolt), "GPU acceleration")
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Fact(painterResource(R.drawable.ic_memory), "Memory")
+                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+                        MEMORY_OPTIONS_MIB.forEachIndexed { index, mib ->
+                            SegmentedButton(
+                                selected = state.createMemoryMiB == mib,
+                                onClick = { dispatch(AppEvent.CreateMemoryChanged(mib)) },
+                                shape = SegmentedButtonDefaults.itemShape(index, MEMORY_OPTIONS_MIB.size),
+                            ) { Text(formatMemory(mib)) }
+                        }
+                    }
                 }
                 Button(
                     onClick = { dispatch(AppEvent.ConfirmCreate) },
@@ -631,7 +692,7 @@ private fun SessionScreen(
             requestId = startRequestId,
             instanceId = instance.id,
             bundleId = instance.bundleId,
-            memoryMib = bundle.recommendedMemoryMiB,
+            memoryMib = instance.memoryMiB,
             vcpus = 4,
             widthPixels = metrics.widthPixels.coerceAtLeast(1),
             heightPixels = metrics.heightPixels.coerceAtLeast(1),

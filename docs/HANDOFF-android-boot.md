@@ -1,5 +1,12 @@
 # Handoff prompt — boot Android in the emulated engine on the phone
 
+> **Status 2026-11-09 (later the same day): done to `system_server`.** The stand-in boots on the phone
+> and draws on its screen, as the shell user and inside `qualification/emu/viewer-app`
+> (`untrusted_app`). Blockers 1 and 2 below are solved by `carbonctl emu boot-assets` and
+> `qualification/emu/android-standin/`. What remains is boot speed to `boot_completed`. See
+> `qualification/emu/reports/2026-11-09-android-standin-boot-on-phone.md`. The owner has dropped
+> custom ROM builds (GrapheneOS/LineageOS/PixelOS) for now.
+
 Paste everything below the line into a fresh agent session started in `/Volumes/SSD/Code/CarbonHV`.
 
 ---

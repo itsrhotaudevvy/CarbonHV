@@ -6,8 +6,11 @@
 //! would:
 //!
 //! ```text
-//! initrd = vendor_boot.vendor_ramdisk ‖ init_boot.ramdisk ‖ bootconfig trailer
+//! initrd = vendor_boot.vendor_ramdisk ‖ init_boot.ramdisk ‖ bootconfig ‖ size ‖ csum ‖ magic
 //! ```
+//!
+//! The bootconfig block is vendor_boot's own bootconfig section followed by the parameters the
+//! bootloader would add, in the layout Linux's `get_boot_config_from_initrd` reads (init/main.c).
 //!
 //! Nothing here trusts a size field: every offset is checked against the buffer, every section is
 //! capped, and header versions outside v3/v4 are refused instead of guessed at. Parsing runs at
@@ -30,8 +33,9 @@ const MAX_CMDLINE_BYTES: usize = 2048;
 const BOOT_MAGIC: &[u8] = b"ANDROID!";
 const VENDOR_BOOT_MAGIC: &[u8] = b"VNDRBOOT";
 const BOOTCONFIG_MAGIC: &[u8] = b"#BOOTCONFIG\n";
-/// Padding byte the kernel uses for a bootconfig block that is not a multiple of four bytes.
-const BOOTCONFIG_PAD: u8 = b'#';
+/// Padding for a bootconfig block that is not a multiple of four bytes. Linux's own
+/// `tools/bootconfig` pads with NUL, and the parser stops at the first NUL.
+const BOOTCONFIG_PAD: u8 = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BootImageError {
@@ -262,9 +266,11 @@ pub struct EmulatedBootAssets {
 
 /// Assembles the direct-kernel boot assets.
 ///
-/// `bootconfig` entries are written as a bootconfig trailer appended to the initrd, which is how
-/// Android 12+ GKI kernels learn `androidboot.*` keys. The `bootconfig` token is added to the
-/// command line when it is missing, because the kernel only looks for the trailer when asked.
+/// vendor_boot's bootconfig section and then the `bootconfig` entries are written as one
+/// bootconfig block appended to the initrd, which is how Android 12+ GKI kernels learn
+/// `androidboot.*` keys. Dropping the vendor section loses keys such as
+/// `androidboot.hardware`, so it is always carried. The `bootconfig` token is added to the
+/// command line when it is missing, because the kernel only looks for the block when asked.
 pub fn assemble(
     boot: &BootImage,
     init_boot: Option<&BootImage>,
@@ -283,8 +289,10 @@ pub fn assemble(
         initrd.extend_from_slice(&init_boot.ramdisk);
     }
     let mut cmdline = merge_cmdline(&vendor_boot.cmdline, &boot.cmdline);
-    if !bootconfig.is_empty() {
-        initrd.extend_from_slice(&bootconfig_block(bootconfig)?);
+    let mut data = vendor_bootconfig_text(&vendor_boot.bootconfig)?;
+    data.extend_from_slice(&bootconfig_lines(bootconfig)?);
+    if !data.is_empty() {
+        initrd.extend_from_slice(&bootconfig_trailer(data)?);
         if !cmdline
             .split_whitespace()
             .any(|token| token == "bootconfig")
@@ -302,12 +310,18 @@ pub fn assemble(
     })
 }
 
-/// Builds the bootconfig trailer the kernel expects at the end of the initrd.
+/// Builds the bootconfig block the kernel expects at the end of the initrd.
 ///
-/// Layout: the parameters as `key=value\n` lines, padded to a four-byte boundary with `#`, then a
-/// little-endian `size` and `checksum`. The kernel accepts the block only when the sum of every
-/// 32-bit word, including `size` and `checksum`, is zero.
+/// Layout (Linux `get_boot_config_from_initrd`, init/main.c): the parameters as `key=value\n`
+/// lines, NUL-padded to a four-byte boundary, then a little-endian `size` of that data, a
+/// little-endian `checksum` that is the plain byte sum of the data (`xbc_calc_checksum`), and
+/// finally the 12-byte `#BOOTCONFIG\n` magic as the last bytes of the initrd. The kernel finds the
+/// block by looking for the magic at the very end, so the order is not negotiable.
 pub fn bootconfig_block(params: &[&str]) -> Result<Vec<u8>, BootImageError> {
+    bootconfig_trailer(bootconfig_lines(params)?)
+}
+
+fn bootconfig_lines(params: &[&str]) -> Result<Vec<u8>, BootImageError> {
     let mut data = Vec::new();
     for (index, param) in params.iter().enumerate() {
         let valid = !param.is_empty()
@@ -321,6 +335,31 @@ pub fn bootconfig_block(params: &[&str]) -> Result<Vec<u8>, BootImageError> {
         data.extend_from_slice(param.as_bytes());
         data.push(b'\n');
     }
+    Ok(data)
+}
+
+/// vendor_boot's bootconfig section as text lines: trailing NULs dropped, a final newline
+/// ensured, and nothing but printable ASCII, tabs and newlines accepted.
+fn vendor_bootconfig_text(section: &[u8]) -> Result<Vec<u8>, BootImageError> {
+    let end = section
+        .iter()
+        .rposition(|byte| *byte != 0)
+        .map_or(0, |last| last + 1);
+    let text = &section[..end];
+    if text
+        .iter()
+        .any(|byte| !(byte.is_ascii_graphic() || matches!(byte, b' ' | b'\t' | b'\n')))
+    {
+        return Err(BootImageError::InvalidBootConfigParameter { index: 0 });
+    }
+    let mut data = text.to_vec();
+    if !data.is_empty() && !data.ends_with(b"\n") {
+        data.push(b'\n');
+    }
+    Ok(data)
+}
+
+fn bootconfig_trailer(mut data: Vec<u8>) -> Result<Vec<u8>, BootImageError> {
     while data.len() % 4 != 0 {
         data.push(BOOTCONFIG_PAD);
     }
@@ -328,19 +367,41 @@ pub fn bootconfig_block(params: &[&str]) -> Result<Vec<u8>, BootImageError> {
         return Err(BootImageError::BootConfigTooLarge);
     }
     let size = data.len() as u32;
-    let mut sum = size;
-    for chunk in data.chunks_exact(4) {
-        sum = sum.wrapping_add(u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
-    }
-    let checksum = 0u32.wrapping_sub(sum);
-    data.extend_from_slice(BOOTCONFIG_MAGIC);
+    let checksum = data
+        .iter()
+        .fold(0u32, |sum, byte| sum.wrapping_add(u32::from(*byte)));
     data.extend_from_slice(&size.to_le_bytes());
     data.extend_from_slice(&checksum.to_le_bytes());
+    data.extend_from_slice(BOOTCONFIG_MAGIC);
     Ok(data)
 }
 
-/// The bootconfig trailer: 11-byte magic, 4-byte size, 4-byte checksum.
+/// What follows the bootconfig data: 4-byte size, 4-byte checksum, 12-byte `#BOOTCONFIG\n`.
 pub const BOOTCONFIG_TRAILER_BYTES: usize = 20;
+
+/// Reads a bootconfig block back the way Linux does (init/main.c, v6.12): magic at the very end
+/// (or up to three bytes before it), then `size` and `checksum` immediately before the magic.
+/// Returns the data the kernel would hand to the bootconfig parser, or `None` when the kernel
+/// would ignore the block.
+pub fn kernel_view_of_bootconfig(initrd: &[u8]) -> Option<&[u8]> {
+    let magic_len = BOOTCONFIG_MAGIC.len();
+    for back in 0..4 {
+        let magic_start = initrd.len().checked_sub(magic_len + back)?;
+        if &initrd[magic_start..magic_start + magic_len] != BOOTCONFIG_MAGIC {
+            continue;
+        }
+        let header = magic_start.checked_sub(8)?;
+        let size = read_u32(initrd, header) as usize;
+        let checksum = read_u32(initrd, header + 4);
+        let data_start = header.checked_sub(size)?;
+        let data = &initrd[data_start..header];
+        let sum = data
+            .iter()
+            .fold(0u32, |sum, byte| sum.wrapping_add(u32::from(*byte)));
+        return (sum == checksum).then_some(data);
+    }
+    None
+}
 
 fn merge_cmdline(vendor: &str, boot: &str) -> String {
     let mut merged: Vec<&str> = Vec::new();
@@ -505,11 +566,9 @@ mod tests {
             &assets.initrd[26..26 + b"androidboot.hw=emulated\n".len()],
             b"androidboot.hw=emulated\n"
         );
-        let magic_start = assets.initrd.len() - BOOTCONFIG_TRAILER_BYTES;
-        assert_eq!(
-            &assets.initrd[magic_start..magic_start + 12],
-            BOOTCONFIG_MAGIC
-        );
+        assert_eq!(&assets.initrd[assets.initrd.len() - 12..], BOOTCONFIG_MAGIC);
+        let data = kernel_view_of_bootconfig(&assets.initrd).expect("kernel accepts the block");
+        assert!(data.starts_with(b"androidboot.hw=emulated\n"));
         assert!(assets.kernel_cmdline.ends_with("bootconfig"));
         assert!(
             assets
@@ -519,21 +578,47 @@ mod tests {
     }
 
     #[test]
-    fn bootconfig_trailer_sums_to_zero() {
+    fn bootconfig_block_matches_the_kernel_layout_byte_for_byte() {
+        // Golden bytes written out by hand from Linux init/main.c + include/linux/bootconfig.h
+        // (v6.12): data, NUL padding to 4, le32 size, le32 byte-sum checksum, then the magic last.
         let block = bootconfig_block(&["androidboot.a=1", "androidboot.b=22"]).unwrap();
-        let size = u32::from_le_bytes(block[block.len() - 8..block.len() - 4].try_into().unwrap());
-        assert_eq!(size as usize % 4, 0);
-        let data = &block[..size as usize];
-        let mut sum = 0u32;
-        for chunk in data.chunks_exact(4) {
-            sum = sum.wrapping_add(u32::from_le_bytes(chunk.try_into().unwrap()));
-        }
-        sum = sum.wrapping_add(size);
-        let checksum = u32::from_le_bytes(block[block.len() - 4..].try_into().unwrap());
-        sum = sum.wrapping_add(checksum);
-        assert_eq!(sum, 0);
-        let magic_start = block.len() - BOOTCONFIG_TRAILER_BYTES;
-        assert_eq!(&block[magic_start..magic_start + 12], BOOTCONFIG_MAGIC);
+        let mut expected = b"androidboot.a=1\nandroidboot.b=22\n\0\0\0".to_vec();
+        let checksum: u32 = expected.iter().map(|byte| u32::from(*byte)).sum();
+        expected.extend_from_slice(&36u32.to_le_bytes());
+        expected.extend_from_slice(&checksum.to_le_bytes());
+        expected.extend_from_slice(b"#BOOTCONFIG\n");
+        assert_eq!(block, expected);
+        assert_eq!(block.len() - 36, BOOTCONFIG_TRAILER_BYTES);
+        assert_eq!(
+            kernel_view_of_bootconfig(&block),
+            Some(&b"androidboot.a=1\nandroidboot.b=22\n\0\0\0"[..])
+        );
+    }
+
+    #[test]
+    fn kernel_reader_rejects_a_corrupted_block() {
+        let mut block = bootconfig_block(&["androidboot.a=1"]).unwrap();
+        block[0] ^= 1;
+        assert_eq!(kernel_view_of_bootconfig(&block), None);
+        assert_eq!(kernel_view_of_bootconfig(b"no trailer here"), None);
+    }
+
+    #[test]
+    fn carries_vendor_boot_bootconfig_ahead_of_bootloader_params() {
+        let boot = BootImage::parse(&boot_image_v4(b"kernel", b"", "")).unwrap();
+        let vendor = VendorBootImage::parse(&vendor_boot_v4(
+            b"vendor-ramdisk",
+            b"androidboot.hardware=cutf_cvm\nkernel.x=1\n\0\0",
+            "bootconfig",
+        ))
+        .unwrap();
+        let assets = assemble(&boot, None, &vendor, &["androidboot.slot_suffix=_a"]).unwrap();
+        let data = kernel_view_of_bootconfig(&assets.initrd).unwrap();
+        assert_eq!(
+            data,
+            &b"androidboot.hardware=cutf_cvm\nkernel.x=1\nandroidboot.slot_suffix=_a\n"[..]
+        );
+        assert_eq!(assets.kernel_cmdline, "bootconfig");
     }
 
     #[test]

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CarbonHV's own glyph for the LineageOS port: a lineage tree, one root branching to three.
+     Not the LineageOS logo. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="@android:color/white" android:strokeWidth="2"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M12,19 L12,12 M12,12 L5.5,6.5 M12,12 L12,5 M12,12 L18.5,6.5" />
+    <path android:fillColor="@android:color/white"
+        android:pathData="M12,16.5 a2.75,2.75 0,1 1,0 5.5 a2.75,2.75 0,1 1,0 -5.5 Z M5.5,3.75 a2.25,2.25 0,1 1,0 4.5 a2.25,2.25 0,1 1,0 -4.5 Z M12,2.5 a2.25,2.25 0,1 1,0 4.5 a2.25,2.25 0,1 1,0 -4.5 Z M18.5,3.75 a2.25,2.25 0,1 1,0 4.5 a2.25,2.25 0,1 1,0 -4.5 Z" />
+</vector>

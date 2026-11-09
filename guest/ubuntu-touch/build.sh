@@ -35,13 +35,25 @@ SIZE_MIB="${CARBON_UT_ROOTFS_MIB:-8192}"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
+# A rootfs must keep its owners, modes and device nodes, so it is unpacked and imaged as root.
+# Unpacked as an ordinary user, every file becomes that user's and root-only directories (the
+# UBports tarball's /void is 0700) cannot even be read back by mkfs.ext4 -d.
+AS_ROOT=()
+if [[ "$(id -u)" != 0 ]]; then
+  command -v sudo >/dev/null || { echo "assembling a rootfs needs root (or sudo)" >&2; exit 2; }
+  AS_ROOT=(sudo)
+fi
+trap '"${AS_ROOT[@]}" rm -rf "$STAGE"' EXIT
+
 mkdir -p "$OUTPUT" "$STAGE/rootfs"
-tar -xf "$UT_ROOTFS_TARBALL" -C "$STAGE/rootfs"
-mkdir -p "$STAGE/rootfs/etc/carbonhv"
-cp "$PWD/guest/ubuntu-touch/device/cvd1.toml" "$STAGE/rootfs/etc/carbonhv/device.toml"
+"${AS_ROOT[@]}" tar --numeric-owner -xpf "$UT_ROOTFS_TARBALL" -C "$STAGE/rootfs"
+"${AS_ROOT[@]}" mkdir -p "$STAGE/rootfs/etc/carbonhv"
+"${AS_ROOT[@]}" install -m 0644 -o 0 -g 0 "$PWD/guest/ubuntu-touch/device/cvd1.toml" \
+  "$STAGE/rootfs/etc/carbonhv/device.toml"
 
 truncate -s "${SIZE_MIB}M" "$OUTPUT/rootfs.img"
-mkfs.ext4 -q -F -d "$STAGE/rootfs" "$OUTPUT/rootfs.img"
+"${AS_ROOT[@]}" mkfs.ext4 -q -F -d "$STAGE/rootfs" "$OUTPUT/rootfs.img"
+"${AS_ROOT[@]}" chown "$(id -u):$(id -g)" "$OUTPUT/rootfs.img"
 cp "$UT_KERNEL_IMAGE" "$OUTPUT/kernel"
 cp "$UT_INITRD_IMAGE" "$OUTPUT/initrd"
 cp "$UT_KERNEL_CONFIG" "$OUTPUT/kernel.config"

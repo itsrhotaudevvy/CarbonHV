@@ -1,0 +1,8 @@
+console:/ $ 
+console:/ $ id; getprop ro.build.fingerprint; getprop sys.boot_completed; ip -o.build.fingerprint; getprop sys.boot_completed; ip -                         <4 addr show | grep inet; rop sys.boot_completed; ip -4 addr show | grep inet;                          <uptime
+uid=2000(shell) gid=2000(shell) groups=2000(shell),1007(log),3009(readproc) context=u:r:shell:s0
+generic/aosp_cf_arm64_only_phone/vsoc_arm64_only:17/CP2A.260605.016/16644040:userdebug/test-keys
+
+    inet 127.0.0.1/8 scope host lo
+ 15:54:51 up 10 min,  0 users,  load average: 11.37, 8.99, 4.55
+console:/ $ 
