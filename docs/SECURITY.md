@@ -95,6 +95,31 @@ No current repository test proves that the physical guest GPU path is secure or 
 
 Until that work is complete, the physical graphics path remains unqualified.
 
+### 5.1 Emulated engine (QEMU TCG)
+
+On a stock phone whose vendor hypervisor is unreachable from apps, the guest CPU is emulated, so the isolation story changes materially (ADR-017):
+
+| Property | Hardware VM | Emulated engine |
+| --- | --- | --- |
+| Guest↔host isolation boundary | Hypervisor (stage-2 tables) + crosvm sandbox | **QEMU's software MMU plus the Android app sandbox.** A bug in QEMU device emulation or TCG gives code execution as the CarbonHV app, not as the system |
+| Privileges of the emulator process | crosvm domain | `untrusted_app` (CarbonHV's uid). An `isolatedProcess` split is designed but **not implemented** |
+| Guest memory confidentiality from the host | None (non-protected VM) | None |
+| Verified boot | Guest bootloader AVB | Host-verified image digests before boot; no in-guest AVB chain on the direct-kernel path |
+| PAC / BTI in guest | Hardware | Emulated (`pauth-impdef`, characteristic-cheap emulation); MTE off by default, emulated opt-in |
+| Renderer fallback | None | None: a host without Vulkan is refused, not rendered in software |
+
+Controls that are implemented and tested in source:
+
+- The QEMU argv is built only by `crates/carbon-emu`: one argument per vector entry, no shell, no guest-controlled strings, disks and every control channel passed as inherited descriptors (`-add-fd`, `-chardev socket,fd=`), `-nodefaults -no-user-config`, and no `-monitor`, no `-serial stdio`, no host display backend.
+- Paths that do reach argv (kernel, initrd) are absolute, `..`-free and comma-free; kernel parameters are validated printable and comma-free.
+- QMP replies are parsed strictly with a size cap and a typed error channel; QEMU is treated as untrusted input to the service.
+- The frame socket's protocol is fixed-size and versioned; every `AHardwareBuffer` description is validated before it reaches `GraphicsSession`.
+- Admission fails closed: no stored engine means no emulated start, an unprobed `w^x` mode is refused, and an unavailable GPU is refused.
+
+Not yet implemented (each is gated, not claimed): running QEMU in an `isolatedProcess` with `vhost-user-gpu` in the `:vm` process, QEMU's own `-sandbox`, and a measured-threat review of the gfxstream host path in an emulated session. Until those exist, an emulated instance is a **weaker** isolation boundary than a hardware VM and must be described that way in the UI.
+
+Licensing is separate from security: QEMU is GPL-2.0 and runs as a separate executable over sockets/QMP, with its source offer and `NOTICE` published per release (see `docs/ARCHITECTURE.md` ADR-017).
+
 ## 6. Updates, rollback, and recovery
 
 The Rust transaction model stages a candidate, requires a health mark before commit, preserves the previous version as the rollback target, and blocks rollback when a newer candidate has migrated data to an incompatible epoch.

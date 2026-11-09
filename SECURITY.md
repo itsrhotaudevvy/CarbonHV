@@ -29,7 +29,8 @@ The following are especially in scope:
   parameter, or AVF service that the broker did not choose.**
 - **SELinux policy in `host/`** that grants more than its contract tests describe.
 - **Any path that silently falls back to software CPU emulation**, or that labels unqualified
-  hardware as qualified.
+  hardware as qualified. The emulated engine is an explicit, stored, *Emulated*-labelled choice
+  (ADR-017); anything that selects it without that choice, or hides its cost, is in scope.
 
 Out of scope: weaknesses that need an already-compromised Android host kernel or hypervisor, and
 the upstream projects CarbonHV drives (crosvm, AVF, GrapheneOS, Ubuntu Touch). Report those

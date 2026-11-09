@@ -11,4 +11,5 @@ path = "src/main.rs"
 
 [dependencies]
 carbon-core = { path = "../carbon-core" }
+carbon-emu = { path = "../carbon-emu" }
 

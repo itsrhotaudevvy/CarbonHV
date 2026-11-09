@@ -19,7 +19,8 @@ Status vocabulary:
 
 | Area | Status | Current evidence | Remaining gate |
 | --- | --- | --- | --- |
-| ARM64-only admission / no CPU emulation fallback | Verified | Rust admission + bundle tests reject cross-ISA, missing virtualization, and emulation-capable runtime metadata | Physical backend must still boot an actual ARM64 guest |
+| ARM64 admission and engine identity | Verified | Rust admission and bundle tests reject cross-ISA and missing-virtualization hosts; an emulated engine is admitted only when the instance stored it, plus `EmulationReadiness` (ADR-017). No runtime can *silently* select emulation | Physical backend must still boot an actual ARM64 guest |
+| Emulated-engine planning (QEMU TCG) | Verified source / no runtime evidence | `carbon-emu` builds and golden-tests the exact QEMU argv from measured host facts: TCG placement, memory admission, CPU model, boot-image/bootconfig assembly, QMP client and the frame/input wire format. `carbonctl emu plan` reproduces it. `scripts/verify.sh` runs the golden argvs and the pin check | QEMU has not been cross-built for Android here, and no guest has booted through it (Gates 2, 4, 6, 10) |
 | Lifecycle generation/state model | Verified | Rust lifecycle tests cover legal transitions, stale generations, idempotent requests, single disk writer | Wire to real platform service/runtime and test process death |
 | Bundle manifest parsing | Verified | Strict parser and both starter manifests pass `carbonctl bundle verify` | Production signatures/catalog trust not implemented |
 | CVD1 virtual-device contracts | Verified | Contract tests cover major version, ARM64, required virtio devices, guest family | Real backend device realization not yet proven |
@@ -131,6 +132,24 @@ Implications that hold across families:
 - **Guest CPU features differ by hypervisor.** On the pinned crosvm revision, KVM exposes SVE in auto mode; GenieZone, Halla, and Gunyah expose no SVE and no PMU. MTE stays off on every backend, because an MTE guest cannot map the non-MTE gfxstream blobs used for zero-copy presentation. The GrapheneOS-derived bundle records this as a security difference.
 - **Driver versions are part of every qualification tuple.** For example, Tensor G5's PowerVR driver changed during 2025–2026, so evidence from one driver version never carries over to another.
 - **Core classification:** the ADB probe records `cpu_parts`, `cpu_freq_domains`, `renderer_profile` and the vendor device's SELinux label, so a first physical run on each family can confirm or correct the classification above.
+
+## 2d. Emulated engine (QEMU TCG), source level only
+
+The emulated engine is the answer for **stock phones whose hypervisor is unreachable from apps**, starting with the Redmi `kunzite`. It is opt-in per instance and always labelled *Emulated* (ADR-017).
+
+| Property | Status |
+| --- | --- |
+| CPU execution | **QEMU TCG**, multi-threaded, vCPU threads on performance cores. Not a hypervisor, not near-native; `cpu.native=false` |
+| Graphics | `virtio-gpu-rutabaga` with gfxstream on the host Vulkan device (Adreno 710), composition on the GPU |
+| Presentation | Composed frame as `AHardwareBuffer` + `sync_file` fence into the existing `GraphicsSession`; CPU readback is the labelled, measured fallback |
+| Guest ABI | Unchanged CVD1. The same GrapheneOS-derived image runs on both engines |
+| QEMU build | Recipe and pins in `emu/qemu/` (`VERSIONS.toml`, `--check`). **No Android binary has been built or run here** |
+| Admission | `EmulationReadiness` (memory, Vulkan, ABI) is separate from `HostVirtualizationClass`; an instance with no stored engine never starts emulated |
+| Memory | Guest + 768 MiB reserve must be free. On the measured 2026-11-04 reading (2750 MiB `MemAvailable`) the 2048 MiB `balanced` profile is **refused** and `low-memory` (1536 MiB) is the honest choice. `carbonctl emu plan` prints the refusal with the numbers |
+| Performance | **Unmeasured.** No target or ratio is claimed until G1 (desktop TCG) and G11 (phone) produce reports |
+| Security | No stage-2 isolation: guest/host isolation is TCG's software MMU plus the app sandbox. Recorded in the security model |
+
+The only verified fact at this point is that the *plan* is exact, reviewable and fails closed. Every runtime claim is gated behind `qualification/emu/reports/`.
 
 ## 3. Starter guest status
 

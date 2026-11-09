@@ -1,0 +1,14 @@
+{
+  "source": "fixture: kunzite topology from the 2026-11-04 probe; w^x, Vulkan AHB export, O_DIRECT and affinity are PLANNING ASSUMPTIONS until G3 measures them",
+  "mem_available_mib": 2750,
+  "big_cores": [4, 5, 6, 7],
+  "w_xor_x": "split-wx",
+  "o_direct": true,
+  "vulkan": {
+    "available": true,
+    "hardware_buffer_export": true,
+    "device_name": "Adreno (TM) 710"
+  },
+  "affinity_allowed": true,
+  "uclamp_allowed": true
+}

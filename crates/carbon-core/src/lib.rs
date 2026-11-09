@@ -11,7 +11,7 @@ mod model;
 mod storage;
 mod update;
 
-pub use admission::{AdmissionDecision, AdmissionFailure, admit};
+pub use admission::{AdmissionDecision, AdmissionFailure, admit, admit_with_engine};
 pub use backup::{BackupError, BackupManifest, CloneIdentityPlan, RestoreMode};
 pub use bundle::{BundleArtifact, BundleError, BundleManifest, IntegrationProfile, ReleaseStatus};
 pub use graphics::{
@@ -26,7 +26,10 @@ pub use kernel_config::{
     KernelRequirementClass,
 };
 pub use lifecycle::{LifecycleAction, LifecycleError, LifecycleMachine};
-pub use model::{BundleRequirements, CpuArch, Generation, HostCapabilities, VmState};
+pub use model::{
+    BundleRequirements, CpuArch, EmulationAccelerator, EmulationReadiness, ExecutionEngine,
+    Generation, HardwareVmBackend, HostCapabilities, ProgramInvocation, VmState,
+};
 pub use storage::{
     DiskLeaseError, DiskLeaseTable, DiskLeaseToken, InstallError, InstallRecovery,
     InstallTransaction,

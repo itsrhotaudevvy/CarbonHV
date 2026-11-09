@@ -8,6 +8,7 @@ mod avf;
 mod backend;
 mod control_plane;
 mod direct_crosvm;
+mod emulated;
 mod graphics;
 mod host_resources;
 mod host_runtime;
@@ -32,11 +33,15 @@ pub use avf::{
     AvfPerformanceConfig, AvfPlatformVmPlan,
 };
 pub use backend::{
-    BackendError, HostProbe, HostVirtualizationClass, HypervisorKind, HypervisorProperties,
-    ProgramInvocation,
+    BackendError, EngineSelectionError, HostProbe, HostVirtualizationClass, HypervisorKind,
+    HypervisorProperties, select_execution_engine,
 };
+pub use carbon_core::ProgramInvocation;
 pub use control_plane::{BrokerControlError, BrokerControlPlane, GraphicalStartIntent};
 pub use direct_crosvm::{DirectCrosvmBackend, DirectLaunchPlan, DirectSessionFds};
+pub use emulated::{
+    EmulatedBackend, EmulatedLaunchOptions, EmulatedLaunchPlan, EmulatedSessionFds,
+};
 pub use graphics::{GraphicsHandleLeaseError, GraphicsHandleLeaseTable, GraphicsHandleToken};
 pub use host_resources::{
     CAPACITY_SCALE, CoreKind, CpuCore, HostResources, PlacementError, VcpuPin, VcpuPlacement,

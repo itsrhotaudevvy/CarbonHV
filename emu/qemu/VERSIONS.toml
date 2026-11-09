@@ -1,0 +1,67 @@
+# Exact upstream pins for the Android QEMU build.
+#
+# Every entry is a *pin*, not a supported version claim. `emu/qemu/build-android.sh --check`
+# verifies recorded hashes against tarballs that are already present, and `--require-pins`
+# refuses to build with a missing hash. Nothing here is downloaded by CI.
+#
+# The repo does NOT vendor QEMU, gfxstream or any guest image. See emu/qemu/README.md.
+
+[qemu]
+# Latest stable upstream at pin time (2026-11-08). The plan's "latest 10.x" predates this host's
+# QEMU; virtio-gpu-rutabaga exists since 8.1, so 11.x is not a newer risk than 10.x. Confirm the
+# device after the first build (Gate 2): `qemu-system-aarch64 -device help | grep rutabaga`.
+version = "11.1.3"
+url = "https://download.qemu.org/qemu-11.1.3.tar.xz"
+sha256 = ""
+
+[rutabaga_gfx]
+# Must match Cargo.lock's `rutabaga_gfx`, so the guest-visible capsets are identical to the
+# AVF/crosvm path.
+version = "0.1.80"
+crate_sha256 = "2817d168222af3c49269f583dd8e67429912953ae608f715fd97683ed50320a5"
+
+[gfxstream]
+# Matches workspace.metadata.carbonhv.renderer-upstream (Cargo.toml).
+revision = "ebe5b424e15c0816f64b97c9691060333bb43c7e"
+sha256 = ""
+
+[glib]
+version = "2.82.4"
+url = "https://download.gnome.org/sources/glib/2.82/glib-2.82.4.tar.xz"
+sha256 = ""
+
+[pixman]
+version = "0.44.2"
+url = "https://cairographics.org/releases/pixman-0.44.2.tar.xz"
+sha256 = ""
+
+[libslirp]
+version = "4.9.1"
+url = "https://gitlab.freedesktop.org/slirp/libslirp/-/archive/v4.9.1/libslirp-v4.9.1.tar.gz"
+sha256 = ""
+
+[libfdt]
+version = "1.7.2"
+url = "https://git.kernel.org/pub/scm/utils/dtc/dtc.git/snapshot/dtc-1.7.2.tar.gz"
+sha256 = ""
+
+[zlib]
+version = "1.3.1"
+url = "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
+sha256 = ""
+
+[libffi]
+version = "3.4.6"
+url = "https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz"
+sha256 = ""
+
+[pcre2]
+version = "10.44"
+url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.gz"
+sha256 = ""
+
+[ndk]
+# Cross-compile target ABI; NDK r28 or newer (bionic and Vulkan headers must match minSdk 30).
+version = "28.0.13004108"
+min_sdk = "30"
+target = "aarch64-linux-android30"

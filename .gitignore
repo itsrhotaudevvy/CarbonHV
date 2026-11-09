@@ -13,3 +13,8 @@ local.properties
 *.iml
 captures/
 dist/
+# Emulated-engine build inputs and outputs: downloaded sources, cross-build trees and the
+# packaged QEMU executable are never committed (hashes and provenance go in reports).
+emu/qemu/downloads/
+emu/qemu/build-android/
+android/emu/src/main/jniLibs/

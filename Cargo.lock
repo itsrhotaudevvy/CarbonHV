@@ -13,6 +13,7 @@ name = "carbon-broker"
 version = "0.1.0"
 dependencies = [
  "carbon-core",
+ "carbon-emu",
  "carbon-protocol",
 ]
 
@@ -21,11 +22,19 @@ name = "carbon-cli"
 version = "0.1.0"
 dependencies = [
  "carbon-core",
+ "carbon-emu",
 ]
 
 [[package]]
 name = "carbon-core"
 version = "0.1.0"
+
+[[package]]
+name = "carbon-emu"
+version = "0.1.0"
+dependencies = [
+ "carbon-core",
+]
 
 [[package]]
 name = "carbon-protocol"

@@ -1,12 +1,6 @@
-use std::path::PathBuf;
+use carbon_core::{EmulationReadiness, ExecutionEngine, HardwareVmBackend};
 
 use crate::PlacementError;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProgramInvocation {
-    pub program: PathBuf,
-    pub args: Vec<String>,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostVirtualizationClass {
@@ -140,13 +134,77 @@ pub struct HostProbe {
     pub class: HostVirtualizationClass,
 }
 
+/// Why an instance cannot be started with the engine it asked for.
+///
+/// The rule that matters: an instance with **no stored engine** never falls back to emulation.
+/// The user has to choose "Run emulated (slow)" once, and that choice is stored per instance
+/// (ADR-017). This keeps a hardware-VM instance from silently becoming an emulated one when a
+/// phone's firmware changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EngineSelectionError {
+    /// No hardware VM is ready on this host and the instance has no stored engine.
+    RequiresExplicitEngineChoice,
+    /// The instance is emulated, but this install cannot run the emulated engine right now.
+    EmulationNotReady(EmulationReadiness),
+}
+
+impl EngineSelectionError {
+    pub fn message(self) -> String {
+        match self {
+            EngineSelectionError::RequiresExplicitEngineChoice => {
+                "This phone cannot run a hardware VM. Create the instance as Emulated (slow) or pick a host with an app-reachable hypervisor.".into()
+            }
+            EngineSelectionError::EmulationNotReady(readiness) => readiness.explanation().into(),
+        }
+    }
+}
+
+/// Chooses the engine for one start.
+pub fn select_execution_engine(
+    stored: Option<ExecutionEngine>,
+    probe: &HostProbe,
+    emulation: EmulationReadiness,
+) -> Result<ExecutionEngine, EngineSelectionError> {
+    match stored {
+        Some(engine) if engine.is_emulated() => {
+            if emulation.is_ready() {
+                Ok(engine)
+            } else {
+                Err(EngineSelectionError::EmulationNotReady(emulation))
+            }
+        }
+        // A hardware-VM instance keeps its backend even when emulation would now be possible.
+        Some(engine) => Ok(engine),
+        None => match probe.class {
+            // AVF is the platform-preferred baseline (ADR-004).
+            HostVirtualizationClass::DevelopmentReady
+            | HostVirtualizationClass::VendorHypervisorAvfReady => {
+                Ok(ExecutionEngine::HardwareVm(HardwareVmBackend::Avf))
+            }
+            HostVirtualizationClass::Unavailable
+            | HostVirtualizationClass::VendorHypervisorWithoutAvf => {
+                Err(EngineSelectionError::RequiresExplicitEngineChoice)
+            }
+        },
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendError {
     UnsafeRuntimeDirectory,
     InvalidGraphicsConfig,
-    UnsupportedCliVcpuCount { requested: u16 },
+    UnsupportedCliVcpuCount {
+        requested: u16,
+    },
     NoHypervisor,
     InvalidSessionDescriptor,
     NonUtf8Path,
     Placement(PlacementError),
+    /// The emulated engine's own planning refused the request; the message is user-facing.
+    Emulation(carbon_emu::EmuPlanError),
+    EngineSelection(EngineSelectionError),
+    DiskDescriptorCountMismatch {
+        disks: usize,
+        descriptors: usize,
+    },
 }

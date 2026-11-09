@@ -1,5 +1,7 @@
 use carbon_core::{
-    AdmissionDecision, AdmissionFailure, BundleRequirements, CpuArch, HostCapabilities, admit,
+    AdmissionDecision, AdmissionFailure, BundleRequirements, CpuArch, EmulationAccelerator,
+    EmulationReadiness, ExecutionEngine, HardwareVmBackend, HostCapabilities, admit,
+    admit_with_engine,
 };
 
 fn ready_host() -> HostCapabilities {
@@ -88,4 +90,91 @@ fn rejects_cross_isa_bundle() {
             guest: CpuArch::X86_64,
         }])
     );
+}
+
+fn emulated_engine() -> ExecutionEngine {
+    ExecutionEngine::Emulated(EmulationAccelerator::Tcg)
+}
+
+fn host_without_hardware_virtualization() -> HostCapabilities {
+    let mut host = ready_host();
+    host.hardware_virtualization = false;
+    host
+}
+
+#[test]
+fn a_stored_emulated_engine_admits_a_host_without_virtualization() {
+    assert_eq!(
+        admit_with_engine(
+            &host_without_hardware_virtualization(),
+            &starter_bundle(),
+            Some(emulated_engine()),
+            EmulationReadiness::Ready,
+        ),
+        AdmissionDecision::Ready
+    );
+}
+
+#[test]
+fn a_stored_emulated_engine_still_fails_closed_when_emulation_is_not_ready() {
+    let readiness = EmulationReadiness::InsufficientMemory {
+        required_mib: 2816,
+        available_mib: 2750,
+    };
+
+    assert_eq!(
+        admit_with_engine(
+            &host_without_hardware_virtualization(),
+            &starter_bundle(),
+            Some(emulated_engine()),
+            readiness,
+        ),
+        AdmissionDecision::Rejected(vec![AdmissionFailure::EmulationNotReady(readiness)])
+    );
+}
+
+#[test]
+fn an_instance_without_a_stored_engine_never_starts_emulated() {
+    assert_eq!(
+        admit_with_engine(
+            &host_without_hardware_virtualization(),
+            &starter_bundle(),
+            None,
+            EmulationReadiness::Ready,
+        ),
+        AdmissionDecision::Rejected(vec![AdmissionFailure::HardwareVirtualizationUnavailable])
+    );
+}
+
+#[test]
+fn a_hardware_instance_never_falls_back_to_emulation() {
+    let engine = ExecutionEngine::HardwareVm(HardwareVmBackend::Avf);
+
+    assert_eq!(
+        admit_with_engine(
+            &host_without_hardware_virtualization(),
+            &starter_bundle(),
+            Some(engine),
+            EmulationReadiness::Ready,
+        ),
+        AdmissionDecision::Rejected(vec![AdmissionFailure::HardwareVirtualizationUnavailable])
+    );
+}
+
+#[test]
+fn engine_metadata_round_trips_and_never_labels_emulation_native() {
+    for engine in [
+        ExecutionEngine::HardwareVm(HardwareVmBackend::Avf),
+        ExecutionEngine::HardwareVm(HardwareVmBackend::DirectCrosvm),
+        emulated_engine(),
+    ] {
+        assert_eq!(ExecutionEngine::parse(&engine.as_str()), Some(engine));
+    }
+
+    assert_eq!(emulated_engine().label(), "Emulated");
+    assert!(!emulated_engine().cpu_native());
+    assert!(emulated_engine().is_emulated());
+    assert!(!ExecutionEngine::HardwareVm(HardwareVmBackend::Avf).is_emulated());
+    assert_eq!(ExecutionEngine::parse("emulated:kvm"), None);
+    assert_eq!(ExecutionEngine::parse("emulated"), None);
 }

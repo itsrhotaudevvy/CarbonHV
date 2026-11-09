@@ -218,6 +218,23 @@ The user sees concrete states such as “Ready for accelerated sessions,” “C
 
 Re-run relevant checks after a host update, renderer update, broker update, or device policy change. A previously qualified model name alone must never bypass admission.
 
+### 7.1 Execution-engine selection (hardware VM vs. emulated)
+
+The engine is part of an instance's identity, not a runtime preference (ADR-017):
+
+- `ExecutionEngine::HardwareVm { Avf | DirectCrosvm }` runs guest instructions on the host CPU through a hypervisor.
+- `ExecutionEngine::Emulated { Tcg }` runs them through QEMU's dynamic binary translation.
+
+Rules:
+
+1. If a hardware VM is ready, that engine is used. Emulation is never offered as a "faster start" or a fallback.
+2. If no hardware VM is reachable, the instance setup screen offers **"Run emulated (slow)"** as an explicit opt-in, with the CPU cost and the security differences shown. The choice is stored per instance and requires a cold boot to change.
+3. Emulation availability is a *separate* probe result (`EmulationReadiness`: `Ready`, `InsufficientMemory`, `NoVulkan`, `UnsupportedAbi`) from the host's virtualization class, because it depends on app-side facts (free memory, Vulkan, WABI).
+4. An instance created for a hardware VM keeps failing closed on a host without one. It does not silently become emulated.
+5. `cpu.native` is always `false` for an emulated instance; `gpu.*` claims require the same evidence rules as the hardware path, and a software renderer is never a fallback (ADR-016).
+
+Both engines present the same CVD1 guest ABI, so the same bundle and disk images work with either. Guest-visible differences are recorded in [`SUPPORT_MATRIX.md`](SUPPORT_MATRIX.md) and the security model.
+
 ## 8. Virtual hardware platform
 
 Define a versioned **Carbon Virtual Device** contract. Bundles target this contract rather than impersonating a physical phone. Keep an adapter-specific realization because AVF and direct KVM may expose different boot and transport details.
@@ -237,6 +254,8 @@ Define a versioned **Carbon Virtual Device** contract. Bundles target this contr
 | Power | Virtual battery/power state and shutdown channel | Mobile-shell integration and sensible idle behavior |
 
 The first guest profile uses a fixed RAM allocation and static vCPU count per boot. Ballooning and CPU hotplug are later optimizations, not prerequisites. Feature exposure must match what the backend actually supports, including MTE or other hardening-related CPU features.
+
+The emulated realization of the same contract uses QEMU's `virt` machine: GICv3, the ARM generic timer, PSCI, virtio-pci devices and `virtio-gpu-rutabaga` with gfxstream. Its guest-physical memory map differs from crosvm's (QEMU places RAM at `0x4000_0000`), which Linux takes from the FDT; the CVD1 contract is unaffected. There is no guest-visible DVFS device, so a guest that requires `CONFIG_CPUFREQ_VIRT` must treat it as optional (a near-native extra, not a contract requirement).
 
 Guest kernel page size and host userspace page size are distinct concerns. Validate memory mapping, alignment, libraries, graphics buffers, and transport on supported 4 KiB/16 KiB host configurations; never assume every component can run unchanged on both.
 
@@ -395,9 +414,10 @@ If the renderer crashes, isolate the failure, stop consuming invalid buffers, re
 
 - **Qualified accelerated:** hardware CPU and guest graphics acceleration; eligible for native-experience release claims.
 - **CPU accelerated, basic display:** bring-up or diagnostic mode with software-rendered graphics; clearly experimental.
+- **Emulated (opt-in):** QEMU TCG for guest CPU instructions with GPU-accelerated graphics through gfxstream. Admitted only when the instance stored that engine (ADR-017), always labelled *Emulated*, never described as native or near-native.
 - **Unavailable:** no compliant execution path; launch blocked.
 
-No silent CPU-emulation fallback and no silent downgrade from qualified graphics to software rendering. Local VNC/RDP may be used by engineers during bring-up, but is not the planned production presentation path.
+No silent CPU-emulation fallback and no silent downgrade from qualified graphics to software rendering. An engine the user explicitly chose, and that the UI labels, is not a fallback. Local VNC/RDP may be used by engineers during bring-up, but is not the planned production presentation path.
 
 ## 13. Input, keyboard, and accessibility
 
@@ -1000,7 +1020,7 @@ These may be shared roles, but none can be replaced by UI-only development. Trea
 
 | ID | Decision | Rationale | Revisit when |
 | --- | --- | --- | --- |
-| ADR-001 | ARM64 hardware virtualization only for production | Preserves native execution goal | A separate product explicitly needs another ISA |
+| ADR-001 | ARM64 hardware virtualization only for production. The explicitly opt-in, separately labelled emulated engine is a second tier, not a substitute (ADR-017) | Preserves native execution goal | A separate product explicitly needs another ISA |
 | ADR-002 | Native Kotlin/Compose shell with dedicated presentation surface | Integrates with Android without routing frames through UI state | Measured platform constraint requires another surface strategy |
 | ADR-003 | Narrow broker with one initially qualified backend | Contains privileges and maintenance scope | A second supported host needs a distinct adapter |
 | ADR-004 | AVF preferred, direct KVM qualified explicitly | Aligns with platform while preserving feasibility options | Gate 1 evidence selects the first runtime |
@@ -1011,10 +1031,11 @@ These may be shared roles, but none can be replaced by UI-only development. Trea
 | ADR-009 | One foreground VM; cold boot recovery baseline | Controls memory and snapshot complexity | Resource and checkpoint evidence supports expansion |
 | ADR-010 | Explicit, revocable sharing; private GrapheneOS profile | Limits integration attack surface | User research supports additional bounded defaults |
 | ADR-011 | Downstream guest identity and security feature accounting | Matches actual provenance and capabilities | Upstream officially adopts a target |
-| ADR-012 | No software/remote fallback hidden behind native claims | Keeps product behavior honest | Product scope explicitly changes |
+| ADR-012 | No software/remote fallback hidden behind native claims. An explicitly chosen engine labelled *Emulated* is not a hidden fallback (ADR-017) | Keeps product behavior honest | Product scope explicitly changes |
 | ADR-013 | Gunyah is not KVM. On Snapdragon, first enable AVF itself on a controlled host build (non-protected VMs; crosvm falls back from absent `/dev/kvm` to `/dev/gunyah`). A CarbonHV-owned `crosvm --hypervisor gunyah` launch is the second tier, for per-vCPU pinning AVF cannot express. Never request a protected or QCOM trusted VM for the GUI session | Observed 2026-09-30: `/dev/gunyah`, vendor `qvirt`, no `/dev/kvm`, AVF reports VMs unsupported. In AOSP, virtmgr passes `--hypervisor gunyah[...]` only for protected QCOM trusted VMs. Pinned crosvm creates unprotected Gunyah VMs with shared memory and no swiotlb | A Gunyah guest boots and renders through either tier on a physical host, or the vendor hypervisor refuses non-protected VMs |
 | ADR-014 | Near-native performance comes from host-side placement, not guest-visible shortcuts: pin vCPUs 1:1 to performance cores, mirror capacities and frequency domains, forward guest DVFS, advise THP, report free pages. Never disable mitigations or weaken confinement for speed | The guest's own EAS/schedutil then behave as on hardware, and every lever is a host scheduling hint | Measured sustained runs show a lever costs more (thermal or memory) than it gains |
 | ADR-015 | One placement and renderer policy across SoC families (Tensor, Exynos, Dimensity, Snapdragon). Vendor differences live only in probe facts (hypervisor device, MIDR core classes, cpufreq domains) and renderer profile IDs, never in the guest ABI | Keeps both starter guests portable, and keeps qualification tuples comparable across vendors | A vendor needs a guest-visible device or driver difference that the CVD1 contract cannot express |
+| ADR-017 | On hosts with no app-reachable hypervisor, CarbonHV offers an explicit, opt-in **Emulated** engine: QEMU TCG for guest CPU instructions and gfxstream on the host GPU for graphics, over the unchanged CVD1 guest ABI. It is never selected automatically, never labelled native or near-native, and never uses a software GPU | Stock Snapdragon phones (`kunzite`) deny `/dev/gunyah` to apps and leave AVF disabled, and the user requires stock, unrooted, unflashed phones. CPU emulation is several times slower than native, so the cost must be the user's explicit, stored choice rather than a fallback | AVF becomes app-reachable on a probed stock host, or measured G11 numbers make the engine unusable for its starter guests |
 | ADR-016 | Additional AOSP-derived ROMs (LineageOS, PixelOS) share one CarbonHV CVD1 product overlay on the AOSP cuttlefish arm64-only phone, adding only their vendor configuration. ROM-specific virtual device trees are not used | The cuttlefish base already ships the gfxstream guest GLES/Vulkan stack, the ranchu composer and virtio devices. LineageOS `device/virt/virtio_*` boots through GRUB/EFI, renders with Mesa virgl/venus and silently falls back to SwiftShader, which would fork CVD1's transport and break the no-software-fallback rule | A ROM cannot boot on the cuttlefish base, or CarbonHV adopts a second qualified guest graphics transport |
 
 ## 32. Open questions with owners and deadlines

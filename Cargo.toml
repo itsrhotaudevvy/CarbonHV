@@ -2,6 +2,7 @@
 members = [
     "crates/carbon-core",
     "crates/carbon-cli",
+    "crates/carbon-emu",
     "crates/carbon-protocol",
     "crates/carbon-broker",
     "crates/carbon-renderer",

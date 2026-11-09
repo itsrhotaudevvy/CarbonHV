@@ -50,16 +50,19 @@ Run:
 scripts/verify.sh
 ```
 
-The verifier performs eight stages:
+The verifier performs ten stages:
 
 1. `cargo fmt --all -- --check`
 2. `cargo test`
 3. validation of `bundles/grapheneos/bundle.toml` and `bundles/ubuntu-touch/bundle.toml`
 4. validation of both CVD1 guest contracts
-5. shell syntax checks for guest and qualification scripts
+5. shell syntax checks for guest, emulated-engine and qualification scripts
 6. deterministic qualification fixture checks
-7. Android domain/app unit tests
-8. Android debug APK assembly and artifact existence check
+7. emulated-engine planning: `emu/qemu/build-android.sh --check`, plus the exact QEMU argv for
+   the measured phone fixture (and the refusal that must happen for the `balanced` profile there)
+8. GPU proof fixture checks
+9. Android domain/app unit tests
+10. Android debug APK assembly and artifact existence check
 
 The final line must be:
 
@@ -67,7 +70,9 @@ The final line must be:
 CarbonHV verification: PASS
 ```
 
-This proves the repository's host-independent contracts and buildable Android shell. It does not prove that either full guest boots on a physical Android device.
+This proves the repository's host-independent contracts, the emulated-engine launch plan and the
+buildable Android shell. It does not prove that either full guest boots on a physical Android
+device, and it does not build the QEMU binary: that is Gate 2 (`emu/qemu/README.md`).
 
 ## 4. Rust host tools
 
@@ -100,6 +105,10 @@ profile.
 Useful validation commands:
 
 ```bash
+# Emulated engine: the exact QEMU argv for a set of host facts. Refuses when memory does not admit.
+cargo run -q -p carbon-cli -- emu plan --facts qualification/emu/fixtures/kunzite.json
+cargo run -q -p carbon-cli -- emu plan --facts qualification/emu/fixtures/kunzite.json --profile low-memory
+
 cargo run -q -p carbon-cli -- bundle verify bundles/grapheneos/bundle.toml
 cargo run -q -p carbon-cli -- bundle verify bundles/ubuntu-touch/bundle.toml
 cargo run -q -p carbon-cli -- guest verify guest/android/device/cvd1.toml

@@ -12,6 +12,12 @@ own license, and any future binary bundle must ship their notices and source off
 - GrapheneOS sources (MIT and upstream AOSP licenses, the GrapheneOS project)
 - Ubuntu Touch / UBports components (GPL-3.0, LGPL-3.0 and others, the UBports Foundation)
 - Linux kernel (GPL-2.0)
+- QEMU, run as a separate executable by the emulated engine (GPL-2.0, The QEMU Project
+  Developers). CarbonHV ships a source offer and the exact sources plus patches with any release
+  that includes the QEMU binary
+- glib (LGPL-2.1-or-later), pixman (MIT), libslirp (BSD-3-Clause), dtc/libfdt (GPL-2.0 /
+  BSD-2-Clause), zlib (Zlib), libffi (MIT) and pcre2 (BSD-3-Clause), cross-built for Android as
+  QEMU dependencies
 
 "GrapheneOS", "Ubuntu Touch", "Android", "Snapdragon", "Tensor", "Exynos", "Dimensity", "Mali",
 "Immortalis", "Adreno", "PowerVR" and "Xclipse" are trademarks of their respective owners.

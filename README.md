@@ -19,7 +19,7 @@ Additional Android-derived ROMs are being ported on the same CVD1 overlay ([ADR-
 Both are recipe-only today ([`guest/lineageos`](guest/lineageos), [`guest/pixelos`](guest/pixelos)).
 
 > [!IMPORTANT]
-> **Pre-release.** CarbonHV is a development milestone, not a supported release. The source, contracts and tooling are verified in CI. **No guest has yet booted on a physical phone through CarbonHV**, and every physical host is `EXPERIMENTAL` or `UNSUPPORTED`. See the [support matrix](docs/SUPPORT_MATRIX.md) for exactly what is proven and what is still hardware-gated. CarbonHV never falls back to software CPU emulation.
+> **Pre-release.** CarbonHV is a development milestone, not a supported release. The source, contracts and tooling are verified in CI. **No guest has yet booted on a physical phone through CarbonHV**, and every physical host is `EXPERIMENTAL` or `UNSUPPORTED`. See the [support matrix](docs/SUPPORT_MATRIX.md) for exactly what is proven and what is still hardware-gated. CarbonHV never falls back to software CPU emulation. Phones whose hypervisor is unreachable from apps may run a guest in an explicitly chosen **Emulated** engine instead (see below).
 
 ## Screenshots
 
@@ -42,6 +42,16 @@ One broker policy, one guest ABI (CVD1: `virtio-gpu`, `virtio-blk`, `virtio-inpu
 | Samsung Exynos | Halla (needs a vendor crosvm) | Xclipse / Mali | source + fixtures |
 | MediaTek Dimensity | GenieZone | Immortalis / Mali | source + fixtures |
 | Qualcomm Snapdragon | Gunyah | Adreno | Snapdragon 6 Gen 3 probed: `UNSUPPORTED` on stock firmware; controlled-build path in source ([ADR-013](docs/ARCHITECTURE.md)) |
+
+### No hardware virtualization on your phone?
+
+On stock phones where Android denies apps every hypervisor device (the probed Redmi `kunzite` is one), CarbonHV can run a guest in **Emulated** mode: QEMU's dynamic binary translation for guest CPU instructions, with **GPU-accelerated graphics** through gfxstream on the phone's own GPU.
+
+- It is **opt-in per instance** and shown as *Emulated* everywhere. It is never selected automatically, and a hardware-VM instance never silently becomes emulated.
+- CPU-bound work is **much slower than native**; graphics stays hardware-accelerated. Performance numbers are not claimed until they are measured on hardware.
+- It shares the CVD1 guest ABI with the hardware path, so the same guest image and disks work on both.
+
+The planning code (`crates/carbon-emu`) and the QEMU build recipe (`emu/qemu/`) are verified in source and CI; **no emulated guest has booted on a phone yet**, and the engine stays `EXPERIMENTAL`. See the support matrix (§2d) for exactly what is and is not proven.
 
 ### Near-native performance
 
@@ -126,6 +136,7 @@ It exits 3 for a CVD1 contract gap and 5 for a near-native performance gap. The 
 - the near-native performance plan;
 - the Compose manager and immersive session shell;
 - GPU capability and renderer profiles for five GPU families;
+- the emulated engine's QEMU argv, memory admission, bootconfig assembly and frame protocol (golden-tested);
 - fail-closed qualification tooling.
 
 **Still hardware or integration gated:**
@@ -146,6 +157,7 @@ It exits 3 for a CVD1 contract gap and 5 for a near-native performance gap. The 
 | `crates/carbon-broker` | `carbonhvd`: broker policy, host topology and performance plan, AVF and direct-crosvm launch planning, Binder services |
 | `crates/carbon-renderer` | Renderer backend profiles (crosvm/Rutabaga/gfxstream) |
 | `crates/carbon-cli` | `carbonctl` validation and diagnostic CLI |
+| `crates/carbon-emu` | Emulated-engine planning: QEMU argv, TCG placement, memory admission, CPU model, boot-image/bootconfig assembly, QMP, frame protocol |
 | `android/domain` | Android-facing immutable domain models and reducers |
 | `android/app` | Native Compose manager and immersive session surface |
 | `android/host-contract` | JVM tests for the platform host-integration logic |
@@ -153,7 +165,8 @@ It exits 3 for a CVD1 contract gap and 5 for a near-native performance gap. The 
 | `bundles` | Starter bundle manifests and schema notes |
 | `guest/android`, `guest/ubuntu-touch`, `guest/common` | Starter guest recipes, CVD1 contracts, kernel fragments |
 | `guest/aosp-overlay`, `guest/lineageos`, `guest/pixelos` | Shared CVD1 product overlay and recipes for AOSP-derived custom ROMs |
-| `qualification` | Physical-host probe, GPU qualification policy, fixtures and evidence reports |
+| `emu/qemu` | Pinned QEMU/glib/gfxstream cross-build recipe for aarch64 Android (no binaries committed) |
+| `qualification` | Physical-host probe, GPU qualification policy, emulated-engine fixtures and evidence reports |
 | `docs` | Architecture, building, security, support matrix, plans |
 
 ## Documentation

@@ -9,6 +9,11 @@ qualification claim**. See [`docs/SUPPORT_MATRIX.md`](docs/SUPPORT_MATRIX.md).
 
 ### Added
 
+- **Emulated engine planning (QEMU TCG, ADR-017).** For stock phones where Android denies apps every hypervisor device, an instance can now be created as *Emulated*: guest CPU instructions through QEMU's dynamic binary translation, graphics through gfxstream on the host GPU, over the unchanged CVD1 guest ABI.
+  - `crates/carbon-emu`: exact QEMU argv, TCG vCPU placement on performance cores, memory admission with a 768 MiB host reserve, per-profile CPU model (`pauth-impdef`, SVE/SME off, MTE opt-in), boot/init_boot/vendor_boot v3/v4 parsing with bootconfig assembly, a typed QMP client, and the versioned frame/input wire format. Golden-tested.
+  - `ExecutionEngine`/`EmulationReadiness` in the domain, and broker engine selection that never turns a hardware-VM instance into an emulated one.
+  - `carbonctl emu plan --facts <json>` prints the exact argv, the memory budget, placement and every warning. Exit 65 with the numbers when admission refuses.
+  - `emu/qemu/` cross-build recipe with pinned versions and `--check`, and `qualification/emu/` fixtures and reports.
 - Snapdragon controlled-host fragment (`host/product/snapdragon/`). It declares AVF VM support in the boot config, adds the one-line `vm_manager_device_type` vendor policy for the observed `vendor_gunyah_dev` label, and sets THP to `madvise`. A contract test checks it against the physical probe evidence.
 - `host/product/snapdragon/patch_vendor_boot.py`, with tests, plus the `KUNZITE.md` procedure:
   - it adds only `androidboot.hypervisor.vm.supported=1` to a stock `vendor_boot` v3/v4 and leaves every other byte and the image size intact;
@@ -19,6 +24,10 @@ qualification claim**. See [`docs/SUPPORT_MATRIX.md`](docs/SUPPORT_MATRIX.md).
   - symbolic OS tiles (shield, Android, sparkle, touch) instead of letters;
   - icon + value facts, shorter copy and icon actions;
   - vendored Material vector icons (Apache-2.0), so the APK stays at about 31 MB.
+
+### Changed
+
+- The emulated engine is admitted only from an instance's stored engine choice. Admission now distinguishes `EmulationNotReady` (memory, Vulkan, ABI) from missing hardware virtualization.
 
 ### Fixed
 
@@ -82,6 +91,10 @@ First public development milestone. The source, contracts and tooling are verifi
   - fail-closed minimal and sustained GPU qualification;
   - evidence for the Pixel 7a (Tensor G2) and the Redmi `kunzite` (Snapdragon 6 Gen 3).
 - **Repository:** CI running `scripts/verify.sh`, a tag-driven release workflow, issue and PR templates, Dependabot, contributing and security policies, and screenshots.
+
+### Changed
+
+- The emulated engine is admitted only from an instance's stored engine choice. Admission now distinguishes `EmulationNotReady` (memory, Vulkan, ABI) from missing hardware virtualization.
 
 ### Fixed
 
