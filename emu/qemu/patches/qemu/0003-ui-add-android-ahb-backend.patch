@@ -1,0 +1,837 @@
+# QEMU: add the `-display android` backend (CarbonHV emulated engine, Phase 4).
+#
+# QEMU cannot hand a frame to an app on Android: the existing backends either need a desktop
+# toolkit (gtk, sdl, cocoa), a socket protocol the app sandbox cannot use (vnc, dbus), or they
+# render into a DRI node an app may not open (egl-headless).  This backend presents the scanout
+# as an AHardwareBuffer over an inherited SOCK_SEQPACKET socketpair, which is the one frame
+# transport that stays zero-copy from QEMU's GPU to the app's Surface:
+#
+#   - ui/android-proto.h  the wire format and the per-mode buffer ring.  Free of QEMU and
+#                         Android headers on purpose, so the build host can compile it and
+#                         check it against the Rust decoder (qualification/emu/frame-proto/).
+#   - ui/android.c        binds a DisplayChangeListener to the default console, converts the
+#                         scanout into a ring of three CPU-writable buffers (v1 readback mode;
+#                         the gfxstream/DMABUF zero-copy scanout is Phase 6 and replaces only
+#                         the conversion), and applies the app's RELEASE backpressure.
+#   - qapi/ui.json        `-display android,frame-fd=N`, gated on CONFIG_ANDROID_DISPLAY.
+#   - meson.build         CONFIG_ANDROID_DISPLAY, true only when the host system is Android.
+#
+# Built only for Android (host_os == 'android'), so no other target gains a code path.  Frames
+# are dropped, never blocked on: a vCPU must not wait for the display.  AHardwareBuffer handles
+# travel with AHardwareBuffer_sendHandleToUnixSocket; sockets are validated message by message,
+# because the app side of the socket is not trusted to send well-formed datagrams.
+#
+# Upstream status: not submitted (Android-only requirement; CarbonHV carries it as a patch).
+--- a/meson.build
++++ b/meson.build
+@@ -2553,6 +2553,10 @@
+ config_host_data.set('CONFIG_SPICE', spice.found())
+ config_host_data.set('CONFIG_X11', x11.found())
+ config_host_data.set('CONFIG_DBUS_DISPLAY', dbus_display)
++# CarbonHV: the `-display android` backend ships only in the Android build.  QEMU's
++# configure maps the NDK cross compiler to host_os 'linux', so the compiler's own define is
++# the honest test (the same one the bionic shm patch above uses).
++config_host_data.set('CONFIG_ANDROID_DISPLAY', cc.get_define('__ANDROID__') != '')
+ config_host_data.set('CONFIG_CFI', get_option('cfi'))
+ config_host_data.set('CONFIG_SELINUX', selinux.found())
+ config_host_data.set('CONFIG_XEN_BACKEND', xen.found())
+--- a/ui/meson.build
++++ b/ui/meson.build
+@@ -92,6 +92,14 @@
+ 
+ ui_modules = {}
+ 
++# CarbonHV: `-display android`. Frames leave QEMU as AHardwareBuffers over an inherited
++# SOCK_SEQPACKET socketpair; see ui/android.c and ui/android-proto.h. Only built for Android.
++if cc.get_define('__ANDROID__') != ''
++  android_ss = ss.source_set()
++  android_ss.add(files('android.c'), cc.find_library('android', required: true))
++  ui_modules += {'android' : android_ss}
++endif
++
+ if curses.found()
+   curses_ss = ss.source_set()
+   curses_ss.add(when: [curses, iconv], if_true: [files('curses.c'), pixman])
+--- a/qapi/ui.json
++++ b/qapi/ui.json
+@@ -1482,7 +1482,21 @@
+ { 'struct'  : 'DisplaySDL',
+   'data'    : { '*grab-mod'   : 'HotKeyMod' } }
+ 
++##
++# @DisplayAndroid:
++#
++# CarbonHV `android` display options.
++#
++# @frame-fd: Descriptor number of this side of a SOCK_SEQPACKET
++#     socketpair, inherited from the parent.  It carries the frame
++#     protocol in ui/android-proto.h.  Required.
++#
++# Since: 11.1
+ ##
++{ 'struct'  : 'DisplayAndroid',
++  'data'    : { 'frame-fd' : 'int' } }
++
++##
+ # @DisplayType:
+ #
+ # Display (user interface) type.
+@@ -1517,6 +1531,11 @@
+ #
+ # @dbus: Start a D-Bus service for the display.  (Since 7.0)
+ #
++# @android: CarbonHV-only backend.  Frames leave QEMU as
++#     AHardwareBuffers over a SOCK_SEQPACKET socketpair, so an app
++#     can present them without copying.  See `-display
++#     android,frame-fd=FD`.  (CarbonHV)
++#
+ # Since: 2.12
+ ##
+ { 'enum'    : 'DisplayType',
+@@ -1529,7 +1548,8 @@
+     { 'name': 'curses', 'if': 'CONFIG_CURSES' },
+     { 'name': 'cocoa', 'if': 'CONFIG_COCOA' },
+     { 'name': 'spice-app', 'if': 'CONFIG_SPICE' },
+-    { 'name': 'dbus', 'if': 'CONFIG_DBUS_DISPLAY' }
++    { 'name': 'dbus', 'if': 'CONFIG_DBUS_DISPLAY' },
++    { 'name': 'android', 'if': 'CONFIG_ANDROID_DISPLAY' }
+   ]
+ }
+ 
+@@ -1567,7 +1587,8 @@
+       'egl-headless': { 'type': 'DisplayEGLHeadless',
+                         'if': 'CONFIG_OPENGL' },
+       'dbus': { 'type': 'DisplayDBus', 'if': 'CONFIG_DBUS_DISPLAY' },
+-      'sdl': { 'type': 'DisplaySDL', 'if': 'CONFIG_SDL' }
++      'sdl': { 'type': 'DisplaySDL', 'if': 'CONFIG_SDL' },
++      'android': { 'type': 'DisplayAndroid', 'if': 'CONFIG_ANDROID_DISPLAY' }
+   }
+ }
+ 
+--- a/ui/android.c
++++ b/ui/android.c
+@@ -0,0 +1,425 @@
++/*
++ * CarbonHV: `-display android` — present the guest screen as AHardwareBuffers.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * Phase 4 of the emulated engine (docs/superpowers/plans/2026-11-08-qemu-emulated-engine.md).
++ * QEMU sends each frame to the `:vm` service as an AHardwareBuffer over a SOCK_SEQPACKET
++ * socketpair, without copying it a second time on the way to the app's surface.
++ *
++ * This file is the readback (v1) mode: the scanout pixman surface is converted into one of a
++ * ring of three CPU-writable, GPU-samplable buffers. The zero-copy gfxstream scanout is Phase 6
++ * and replaces `android_capture()`'s conversion, not the transport around it.
++ *
++ * Wire format: ui/android-proto.h (matched by crates/carbon-emu/src/frame_proto.rs).
++ */
++
++#include "qemu/osdep.h"
++#include "qapi/error.h"
++#include "qapi/qapi-types-ui.h"
++#include "qemu/error-report.h"
++#include "qemu/main-loop.h"
++#include "qemu/module.h"
++#include "qom/object.h"
++#include "ui/console.h"
++#include "ui/android-proto.h"
++
++#include <android/hardware_buffer.h>
++#include <sys/socket.h>
++
++/* The protocol header copies these values so it can be compiled on the build host. Keep them
++ * honest: a silent AHardwareBuffer renumbering would corrupt every frame. */
++G_STATIC_ASSERT(ANDROID_AHB_FORMAT_R8G8B8A8_UNORM ==
++                AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM);
++G_STATIC_ASSERT(ANDROID_AHB_USAGE_CPU_WRITE_OFTEN ==
++                AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN);
++G_STATIC_ASSERT(ANDROID_AHB_USAGE_GPU_SAMPLED_IMAGE ==
++                AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE);
++
++/* The AHB is described as R8G8B8A8 bytes, which pixman spells differently per host endianness. */
++#ifdef HOST_BIG_ENDIAN
++#define ANDROID_DST_PIXMAN_FORMAT PIXMAN_b8g8r8a8
++#else
++#define ANDROID_DST_PIXMAN_FORMAT PIXMAN_r8g8b8a8
++#endif
++
++typedef struct AndroidDisplay {
++    DisplayChangeListener dcl;
++    int frame_fd;
++    bool listening;
++    /* The surface the console currently shows. Owned by the console; only touched from the
++     * callbacks below and from dpy_refresh, all of which run on the main loop thread. */
++    DisplaySurface *surface;
++    AndroidFrameRing ring;
++    AHardwareBuffer *buffer[ANDROID_RING_SLOTS];
++    uint32_t width;
++    uint32_t height;
++    uint32_t format;
++    bool mode_valid;
++    bool dirty;
++    bool broken;
++    uint64_t frames_sent;
++    uint64_t frames_dropped;
++    uint64_t releases;
++    uint64_t releases_unknown;
++    uint64_t resizes_ignored;
++    uint64_t lock_failures;
++} AndroidDisplay;
++
++static AndroidDisplay *android_display;
++
++static bool android_send_bytes(int fd, const uint8_t *bytes, size_t len)
++{
++    ssize_t sent;
++
++    do {
++        sent = send(fd, bytes, len, MSG_NOSIGNAL);
++    } while (sent < 0 && errno == EINTR);
++
++    return sent == (ssize_t)len;
++}
++
++static void android_free_buffers(AndroidDisplay *ad)
++{
++    size_t i;
++
++    for (i = 0; i < ANDROID_RING_SLOTS; i++) {
++        if (ad->buffer[i]) {
++            AHardwareBuffer_release(ad->buffer[i]);
++            ad->buffer[i] = NULL;
++        }
++    }
++}
++
++/* Converts the scanout surface into `buffer`, row by row, with a pixman blit. */
++static bool android_capture(AndroidDisplay *ad, AHardwareBuffer *buffer,
++                            uint32_t width, uint32_t height)
++{
++    int32_t bytes_per_pixel = 0;
++    int32_t bytes_per_stride = 0;
++    uint8_t *dst = NULL;
++    int rc;
++
++    rc = AHardwareBuffer_lockAndGetInfo(buffer,
++                                        AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN,
++                                        -1, NULL, (void **)&dst,
++                                        &bytes_per_pixel, &bytes_per_stride);
++    if (rc != 0) {
++        ad->lock_failures++;
++        return false;
++    }
++
++    if (surface_format(ad->surface) == ANDROID_DST_PIXMAN_FORMAT &&
++        surface_stride(ad->surface) == bytes_per_stride &&
++        bytes_per_stride == (int32_t)width * 4) {
++        /* Already the layout the reader wants: one row-wise copy with no conversion. */
++        uint32_t y;
++        const uint8_t *src = surface_data(ad->surface);
++
++        for (y = 0; y < height; y++) {
++            memcpy(dst + (size_t)y * bytes_per_stride, src + (size_t)y * bytes_per_stride,
++                   (size_t)width * 4);
++        }
++    } else {
++        pixman_image_t *target;
++
++        if (bytes_per_stride < (int32_t)width * 4) {
++            AHardwareBuffer_unlock(buffer, NULL);
++            ad->lock_failures++;
++            return false;
++        }
++        target = pixman_image_create_bits(ANDROID_DST_PIXMAN_FORMAT, width, height,
++                                          (uint32_t *)dst, bytes_per_stride);
++        if (!target) {
++            AHardwareBuffer_unlock(buffer, NULL);
++            ad->lock_failures++;
++            return false;
++        }
++        pixman_image_composite32(PIXMAN_OP_SRC, ad->surface->image, NULL, target,
++                                 0, 0, 0, 0, 0, 0, width, height);
++        pixman_image_unref(target);
++    }
++
++    AHardwareBuffer_unlock(buffer, NULL);
++    return true;
++}
++
++static AHardwareBuffer *android_alloc_buffer(uint32_t width, uint32_t height)
++{
++    AHardwareBuffer_Desc desc = {
++        .width = width,
++        .height = height,
++        .layers = 1,
++        .format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM,
++        .usage = ANDROID_AHB_USAGE_CPU_WRITE_OFTEN | ANDROID_AHB_USAGE_GPU_SAMPLED_IMAGE,
++    };
++    AHardwareBuffer *buffer = NULL;
++
++    if (AHardwareBuffer_allocate(&desc, &buffer) != 0) {
++        return NULL;
++    }
++    return buffer;
++}
++
++/* Announces the new geometry and restarts the ring. Send this before the frame it describes. */
++static bool android_send_mode(AndroidDisplay *ad, uint32_t width, uint32_t height)
++{
++    uint8_t message[ANDROID_PROTO_HEADER_BYTES + ANDROID_MODE_BYTES];
++    size_t len = android_proto_mode(message, width, height,
++                                    ANDROID_AHB_FORMAT_R8G8B8A8_UNORM);
++
++    android_free_buffers(ad);
++    android_ring_reset(&ad->ring);
++    ad->width = width;
++    ad->height = height;
++    ad->format = ANDROID_AHB_FORMAT_R8G8B8A8_UNORM;
++    ad->mode_valid = true;
++
++    return android_send_bytes(ad->frame_fd, message, len);
++}
++
++static void android_frame(AndroidDisplay *ad)
++{
++    uint8_t message[ANDROID_PROTO_HEADER_BYTES + ANDROID_FRAME_BYTES];
++    uint32_t index = 0;
++    uint32_t seq = 0;
++    uint32_t width, height;
++    size_t len;
++
++    if (!ad->surface || ad->broken) {
++        return;
++    }
++
++    width = surface_width(ad->surface);
++    height = surface_height(ad->surface);
++    if (width == 0 || height == 0 || width > ANDROID_PROTO_MAX_DIMENSION ||
++        height > ANDROID_PROTO_MAX_DIMENSION) {
++        return;
++    }
++
++    if (!ad->mode_valid || width != ad->width || height != ad->height) {
++        if (!android_send_mode(ad, width, height)) {
++            ad->broken = true;
++            return;
++        }
++    }
++
++    if (!android_ring_acquire(&ad->ring, &index, &seq)) {
++        /* Three buffers are still with the app. Dropping is the contract: a vCPU must never
++         * wait for the display. */
++        ad->frames_dropped++;
++        return;
++    }
++
++    if (!ad->buffer[index]) {
++        ad->buffer[index] = android_alloc_buffer(width, height);
++        if (!ad->buffer[index]) {
++            android_ring_release(&ad->ring, seq);
++            ad->frames_dropped++;
++            return;
++        }
++    }
++
++    if (!android_capture(ad, ad->buffer[index], width, height)) {
++        android_ring_release(&ad->ring, seq);
++        return;
++    }
++
++    len = android_proto_frame(message, seq, width, height, ad->format,
++                              ANDROID_FRAME_USAGE, false);
++    if (!android_send_bytes(ad->frame_fd, message, len) ||
++        AHardwareBuffer_sendHandleToUnixSocket(ad->buffer[index], ad->frame_fd) != 0) {
++        android_ring_release(&ad->ring, seq);
++        ad->broken = true;
++        error_report("android display: frame socket failed: %s", strerror(errno));
++        return;
++    }
++
++    ad->frames_sent++;
++}
++
++static void android_read_handler(void *opaque)
++{
++    AndroidDisplay *ad = opaque;
++    uint8_t incoming[ANDROID_PROTO_MAX_PAYLOAD];
++    ssize_t got;
++
++    for (;;) {
++        uint32_t seq, width, height, dpi;
++
++        do {
++            got = recv(ad->frame_fd, incoming, sizeof(incoming), MSG_DONTWAIT);
++        } while (got < 0 && errno == EINTR);
++
++        if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
++            return;
++        }
++        if (got == 0) {
++            /* The app closed its end. Keep decoding nothing; the display stays up so the guest
++             * can still be shut down cleanly, but stop polling a dead socket. */
++            qemu_set_fd_handler(ad->frame_fd, NULL, NULL, NULL);
++            ad->listening = false;
++            return;
++        }
++        if (got < 0) {
++            qemu_set_fd_handler(ad->frame_fd, NULL, NULL, NULL);
++            ad->listening = false;
++            ad->broken = true;
++            return;
++        }
++
++        if (android_proto_decode_release(incoming, (size_t)got, &seq)) {
++            if (android_ring_release(&ad->ring, seq)) {
++                ad->releases++;
++            } else {
++                /* Late release for a buffer freed by a mode change, or a stale/duplicate seq. */
++                ad->releases_unknown++;
++            }
++        } else if (android_proto_decode_resize(incoming, (size_t)got, &width, &height, &dpi)) {
++            /* v1 has no guest display hotplug; the app's own surface scaling covers rotation.
++             * Recorded rather than silently ignored so a future version can act on it. */
++            ad->resizes_ignored++;
++            info_report("android display: resize request %ux%u @ %u dpi not applied (v1)",
++                        width, height, dpi);
++        } else {
++            ad->releases_unknown++;
++        }
++    }
++}
++
++static void android_refresh(DisplayChangeListener *dcl)
++{
++    AndroidDisplay *ad = android_display;
++
++    if (!ad || !ad->dirty || ad->broken) {
++        return;
++    }
++    ad->dirty = false;
++    android_frame(ad);
++}
++
++static void android_switch(DisplayChangeListener *dcl, DisplaySurface *surface)
++{
++    AndroidDisplay *ad = android_display;
++
++    if (!ad) {
++        return;
++    }
++    ad->surface = surface;
++    if (surface && (surface_width(surface) != ad->width ||
++                    surface_height(surface) != ad->height)) {
++        ad->mode_valid = false;
++    }
++    ad->dirty = true;
++}
++
++static void android_update(DisplayChangeListener *dcl, int x, int y, int w, int h)
++{
++    if (android_display) {
++        android_display->dirty = true;
++    }
++}
++
++static void android_mouse_set(DisplayChangeListener *dcl, int x, int y, bool on)
++{
++    AndroidDisplay *ad = android_display;
++    uint8_t message[ANDROID_PROTO_HEADER_BYTES + ANDROID_CURSOR_BYTES];
++    size_t len;
++
++    if (!ad || ad->broken) {
++        return;
++    }
++    len = android_proto_cursor(message, on ? (uint32_t)MAX(x, 0) : 0,
++                               on ? (uint32_t)MAX(y, 0) : 0, on);
++    if (!android_send_bytes(ad->frame_fd, message, len)) {
++        ad->broken = true;
++    }
++}
++
++static const DisplayChangeListenerOps android_ops = {
++    .dpy_name = "android",
++    .dpy_refresh = android_refresh,
++    .dpy_gfx_update = android_update,
++    .dpy_gfx_switch = android_switch,
++    .dpy_mouse_set = android_mouse_set,
++};
++
++static void android_display_init(DisplayState *ds, DisplayOptions *opts)
++{
++    AndroidDisplay *ad;
++    QemuConsole *con;
++    uint8_t hello[ANDROID_PROTO_HEADER_BYTES + ANDROID_HELLO_BYTES];
++    size_t hello_len;
++    int fd;
++
++    if (android_display) {
++        error_report("android display: only one display is supported");
++        exit(1);
++    }
++
++    fd = (int)opts->u.android.frame_fd;
++    if (fd < 0) {
++        error_report("android display: frame-fd must be a non-negative descriptor");
++        exit(1);
++    }
++
++    ad = g_new0(AndroidDisplay, 1);
++    ad->frame_fd = fd;
++    android_ring_init(&ad->ring);
++    android_display = ad;
++
++    con = qemu_console_lookup_default();
++    qemu_console_register_listener(con, &ad->dcl, &android_ops);
++
++    /* One second of frames is worthless once the guest is gone; the app learns about the end of
++     * the session from the socket closing, not from a timeout here. */
++    qemu_console_listener_set_refresh(&ad->dcl, GUI_REFRESH_INTERVAL_DEFAULT);
++
++    hello_len = android_proto_hello(hello);
++    if (!android_send_bytes(ad->frame_fd, hello, hello_len)) {
++        error_report("android display: cannot write the greeting to fd %d: %s",
++                     fd, strerror(errno));
++        exit(1);
++    }
++
++    qemu_set_fd_handler(ad->frame_fd, android_read_handler, NULL, ad);
++    ad->listening = true;
++    info_report("android display: frame socket on fd %d, %s presentation",
++                fd, "readback");
++}
++
++static void android_display_cleanup(void)
++{
++    AndroidDisplay *ad = android_display;
++
++    if (!ad) {
++        return;
++    }
++    if (ad->listening) {
++        qemu_set_fd_handler(ad->frame_fd, NULL, NULL, NULL);
++    }
++    qemu_console_unregister_listener(&ad->dcl);
++    android_free_buffers(ad);
++    info_report("android display: %" PRIu64 " frames sent, %" PRIu64 " dropped, "
++                "%" PRIu64 " released, %" PRIu64 " unknown releases, "
++                "%" PRIu64 " lock failures, %" PRIu64 " resizes ignored",
++                ad->frames_sent, ad->frames_dropped, ad->releases,
++                ad->releases_unknown, ad->lock_failures, ad->resizes_ignored);
++    /* The descriptor belongs to the parent; QEMU must not close it before it has finished
++     * writing, but nothing else is owed to the app. */
++    android_display = NULL;
++    g_free(ad);
++}
++
++static QemuDisplay qemu_display_android = {
++    .type = DISPLAY_TYPE_ANDROID,
++    .init = android_display_init,
++    .cleanup = android_display_cleanup,
++};
++
++static void register_android(void)
++{
++    qemu_display_register(&qemu_display_android);
++}
++
++type_init(register_android);
+--- a/ui/android-proto.h
++++ b/ui/android-proto.h
+@@ -0,0 +1,296 @@
++/*
++ * CarbonHV: frame socket wire format shared with the `:vm` service.
++ *
++ * SPDX-License-Identifier: GPL-2.0-or-later
++ *
++ * This header is the C producer of the format that `crates/carbon-emu/src/frame_proto.rs`
++ * parses. It is deliberately free of QEMU and Android headers: the two files that make the
++ * protocol hard to get right (byte layout and the buffer ring) are compiled and exercised by
++ * `qualification/emu/frame-proto/` on the build host, against the Rust decoder.
++ *
++ * Every message is fixed size, little-endian, and carries a 12-byte header:
++ *
++ *     u32 magic ('CHVF'), u16 version, u16 kind, u32 payload length
++ *
++ * A `FRAME` is followed by one extra datagram holding the AHardwareBuffer handle (see
++ * `AHardwareBuffer_sendHandleToUnixSocket`) and, when ANDROID_FRAME_FLAG_HAS_FENCE is set, an
++ * `SCM_RIGHTS` sync_file descriptor. The socket is SOCK_SEQPACKET, so message boundaries and
++ * order are preserved.
++ */
++#ifndef UI_ANDROID_PROTO_H
++#define UI_ANDROID_PROTO_H
++
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++
++#define ANDROID_PROTO_VERSION 1
++#define ANDROID_PROTO_MAGIC 0x43485646u /* "CHVF" */
++#define ANDROID_PROTO_HEADER_BYTES 12
++#define ANDROID_PROTO_MAX_PAYLOAD 4096
++/* Bounded so a corrupt producer cannot make the reader allocate or trust a huge size. */
++#define ANDROID_PROTO_MAX_DIMENSION 16384u
++
++#define ANDROID_MSG_HELLO 1
++#define ANDROID_MSG_MODE 2
++#define ANDROID_MSG_FRAME 3
++#define ANDROID_MSG_CURSOR 4
++#define ANDROID_MSG_RELEASE 0x81
++#define ANDROID_MSG_RESIZE 0x82
++
++/* FRAME.flags bit: a sync_file descriptor follows the buffer handle. */
++#define ANDROID_FRAME_FLAG_HAS_FENCE (1u << 0)
++
++/* AHardwareBuffer_Format / AHardwareBuffer_UsageFlags values, copied from the NDK so this
++ * header stays host-compilable. ui/android.c asserts they still match the NDK. */
++#define ANDROID_AHB_FORMAT_R8G8B8A8_UNORM 1u
++#define ANDROID_AHB_USAGE_CPU_WRITE_OFTEN (3u << 4)
++#define ANDROID_AHB_USAGE_GPU_SAMPLED_IMAGE (1u << 8)
++/* What the reader is allowed to do with a readback frame: sample it as a texture. Likewise the
++ * writer: QEMU only ever locks it through the CPU. */
++#define ANDROID_FRAME_USAGE \
++    ((uint64_t)(ANDROID_AHB_USAGE_CPU_WRITE_OFTEN | ANDROID_AHB_USAGE_GPU_SAMPLED_IMAGE))
++
++/* The ring depth QEMU keeps per display mode. Mirrors the app's backpressure: never reuse a
++ * buffer that has not been RELEASEd, and drop the frame rather than block a vCPU. */
++#define ANDROID_RING_SLOTS 3
++
++/* Message sizes, payload only. */
++#define ANDROID_HELLO_BYTES 4
++#define ANDROID_MODE_BYTES 12
++#define ANDROID_FRAME_BYTES 28
++#define ANDROID_CURSOR_BYTES 12
++#define ANDROID_RELEASE_BYTES 4
++#define ANDROID_RESIZE_BYTES 12
++
++static inline void android_put_u16(uint8_t *out, uint16_t value)
++{
++    out[0] = (uint8_t)(value & 0xff);
++    out[1] = (uint8_t)((value >> 8) & 0xff);
++}
++
++static inline void android_put_u32(uint8_t *out, uint32_t value)
++{
++    android_put_u16(out, (uint16_t)(value & 0xffff));
++    android_put_u16(out + 2, (uint16_t)((value >> 16) & 0xffff));
++}
++
++static inline void android_put_u64(uint8_t *out, uint64_t value)
++{
++    android_put_u32(out, (uint32_t)(value & 0xffffffffu));
++    android_put_u32(out + 4, (uint32_t)((value >> 32) & 0xffffffffu));
++}
++
++static inline uint16_t android_get_u16(const uint8_t *in)
++{
++    return (uint16_t)(in[0] | ((uint16_t)in[1] << 8));
++}
++
++static inline uint32_t android_get_u32(const uint8_t *in)
++{
++    return (uint32_t)android_get_u16(in) |
++           ((uint32_t)android_get_u16(in + 2) << 16);
++}
++
++/* Writes the header and returns the total message size; `payload` is written after it. */
++static inline size_t android_proto_header(uint8_t *out, uint16_t kind, size_t payload_bytes)
++{
++    android_put_u32(out, ANDROID_PROTO_MAGIC);
++    android_put_u16(out + 4, ANDROID_PROTO_VERSION);
++    android_put_u16(out + 6, kind);
++    android_put_u32(out + 8, (uint32_t)payload_bytes);
++    return ANDROID_PROTO_HEADER_BYTES + payload_bytes;
++}
++
++static inline size_t android_proto_hello(uint8_t *out)
++{
++    android_put_u16(out + ANDROID_PROTO_HEADER_BYTES, ANDROID_PROTO_VERSION);
++    android_put_u16(out + ANDROID_PROTO_HEADER_BYTES + 2, 0);
++    return android_proto_header(out, ANDROID_MSG_HELLO, ANDROID_HELLO_BYTES);
++}
++
++static inline size_t android_proto_mode(uint8_t *out, uint32_t width, uint32_t height,
++                                        uint32_t format)
++{
++    uint8_t *payload = out + ANDROID_PROTO_HEADER_BYTES;
++
++    android_put_u32(payload, width);
++    android_put_u32(payload + 4, height);
++    android_put_u32(payload + 8, format);
++    return android_proto_header(out, ANDROID_MSG_MODE, ANDROID_MODE_BYTES);
++}
++
++static inline size_t android_proto_frame(uint8_t *out, uint32_t seq, uint32_t width,
++                                         uint32_t height, uint32_t format, uint64_t usage,
++                                         bool has_fence)
++{
++    uint8_t *payload = out + ANDROID_PROTO_HEADER_BYTES;
++
++    android_put_u32(payload, seq);
++    android_put_u32(payload + 4, width);
++    android_put_u32(payload + 8, height);
++    android_put_u32(payload + 12, format);
++    android_put_u64(payload + 16, usage);
++    android_put_u32(payload + 24, has_fence ? ANDROID_FRAME_FLAG_HAS_FENCE : 0);
++    return android_proto_header(out, ANDROID_MSG_FRAME, ANDROID_FRAME_BYTES);
++}
++
++static inline size_t android_proto_cursor(uint8_t *out, uint32_t x, uint32_t y, bool visible)
++{
++    uint8_t *payload = out + ANDROID_PROTO_HEADER_BYTES;
++
++    android_put_u32(payload, x);
++    android_put_u32(payload + 4, y);
++    android_put_u32(payload + 8, visible ? 1 : 0);
++    return android_proto_header(out, ANDROID_MSG_CURSOR, ANDROID_CURSOR_BYTES);
++}
++
++/*
++ * Validates a datagram received from the app and returns its payload, or NULL. Only the two
++ * app -> QEMU kinds are accepted; anything else (including a FRAME arriving here) is dropped.
++ */
++static inline const uint8_t *android_proto_expect(const uint8_t *bytes, size_t len,
++                                                  uint16_t kind, size_t payload_bytes)
++{
++    if (!bytes || len != ANDROID_PROTO_HEADER_BYTES + payload_bytes) {
++        return NULL;
++    }
++    if (android_get_u32(bytes) != ANDROID_PROTO_MAGIC) {
++        return NULL;
++    }
++    if (android_get_u16(bytes + 4) != ANDROID_PROTO_VERSION) {
++        return NULL;
++    }
++    if (android_get_u16(bytes + 6) != kind) {
++        return NULL;
++    }
++    if (android_get_u32(bytes + 8) != (uint32_t)payload_bytes) {
++        return NULL;
++    }
++    return bytes + ANDROID_PROTO_HEADER_BYTES;
++}
++
++static inline bool android_proto_decode_release(const uint8_t *bytes, size_t len,
++                                                uint32_t *seq)
++{
++    const uint8_t *payload = android_proto_expect(bytes, len, ANDROID_MSG_RELEASE,
++                                                  ANDROID_RELEASE_BYTES);
++    uint32_t value;
++
++    if (!payload) {
++        return false;
++    }
++    value = android_get_u32(payload);
++    if (value == 0) {
++        return false;
++    }
++    *seq = value;
++    return true;
++}
++
++static inline bool android_proto_decode_resize(const uint8_t *bytes, size_t len,
++                                               uint32_t *width, uint32_t *height,
++                                               uint32_t *dpi)
++{
++    const uint8_t *payload = android_proto_expect(bytes, len, ANDROID_MSG_RESIZE,
++                                                  ANDROID_RESIZE_BYTES);
++    uint32_t w, h, d;
++
++    if (!payload) {
++        return false;
++    }
++    w = android_get_u32(payload);
++    h = android_get_u32(payload + 4);
++    d = android_get_u32(payload + 8);
++    if (w == 0 || h == 0 || w > ANDROID_PROTO_MAX_DIMENSION ||
++        h > ANDROID_PROTO_MAX_DIMENSION || d == 0 || d > 10000) {
++        return false;
++    }
++    *width = w;
++    *height = h;
++    *dpi = d;
++    return true;
++}
++
++/*
++ * The per-mode buffer ring. A slot is busy from the moment a FRAME is sent until the app
++ * echoes its seq in a RELEASE, so QEMU never overwrites a buffer the app is still sampling.
++ * `next_seq` starts at 1 because 0 means "no sequence" in the protocol.
++ */
++typedef struct AndroidRingSlot {
++    uint32_t seq;
++    bool busy;
++} AndroidRingSlot;
++
++typedef struct AndroidFrameRing {
++    AndroidRingSlot slot[ANDROID_RING_SLOTS];
++    uint32_t next_seq;
++} AndroidFrameRing;
++
++static inline void android_ring_init(AndroidFrameRing *ring)
++{
++    size_t i;
++
++    for (i = 0; i < ANDROID_RING_SLOTS; i++) {
++        ring->slot[i].seq = 0;
++        ring->slot[i].busy = false;
++    }
++    ring->next_seq = 1;
++}
++
++/* A mode change invalidates every outstanding buffer; the app's late RELEASEs are ignored. */
++static inline void android_ring_reset(AndroidFrameRing *ring)
++{
++    android_ring_init(ring);
++}
++
++static inline uint32_t android_ring_inflight(const AndroidFrameRing *ring)
++{
++    size_t i;
++    uint32_t count = 0;
++
++    for (i = 0; i < ANDROID_RING_SLOTS; i++) {
++        if (ring->slot[i].busy) {
++            count++;
++        }
++    }
++    return count;
++}
++
++/* Marks a slot busy and gives it the next sequence number. False means "drop this frame". */
++static inline bool android_ring_acquire(AndroidFrameRing *ring, uint32_t *index,
++                                        uint32_t *seq)
++{
++    size_t i;
++
++    for (i = 0; i < ANDROID_RING_SLOTS; i++) {
++        if (!ring->slot[i].busy) {
++            uint32_t value = ring->next_seq;
++
++            ring->next_seq = value == UINT32_MAX ? 1 : value + 1;
++            ring->slot[i].seq = value;
++            ring->slot[i].busy = true;
++            *index = (uint32_t)i;
++            *seq = value;
++            return true;
++        }
++    }
++    return false;
++}
++
++/* Frees the slot a RELEASE names. False for an unknown or already-freed sequence. */
++static inline bool android_ring_release(AndroidFrameRing *ring, uint32_t seq)
++{
++    size_t i;
++
++    for (i = 0; i < ANDROID_RING_SLOTS; i++) {
++        if (ring->slot[i].busy && ring->slot[i].seq == seq) {
++            ring->slot[i].busy = false;
++            ring->slot[i].seq = 0;
++            return true;
++        }
++    }
++    return false;
++}
++
++#endif /* UI_ANDROID_PROTO_H */

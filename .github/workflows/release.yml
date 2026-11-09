@@ -30,12 +30,26 @@ jobs:
         env:
           GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-local
         run: scripts/verify.sh
-      - name: Package
+      - name: Package CLI
         run: |
           cargo build --release -p carbon-cli
           mkdir -p dist
           tar -C target/release -czf "dist/carbonctl-${GITHUB_REF_NAME}-x86_64-linux.tar.gz" carbonctl
-          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/carbonhv-${GITHUB_REF_NAME}-debug.apk"
+      - name: Package release APK
+        env:
+          GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-local
+          CARBONHV_KEYSTORE_BASE64: ${{ secrets.CARBONHV_KEYSTORE_BASE64 }}
+          CARBONHV_KEYSTORE_PASSWORD: ${{ secrets.CARBONHV_KEYSTORE_PASSWORD }}
+          CARBONHV_KEY_ALIAS: ${{ secrets.CARBONHV_KEY_ALIAS }}
+          CARBONHV_KEY_PASSWORD: ${{ secrets.CARBONHV_KEY_PASSWORD }}
+        run: |
+          # With the keystore secrets set, this is a distributable build. Without them the APK is
+          # signed with the debug key and named `-release-debugkey` so nobody mistakes it for one.
+          if [[ -n "$CARBONHV_KEYSTORE_BASE64" ]]; then
+            printf '%s' "$CARBONHV_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            export CARBONHV_KEYSTORE="$RUNNER_TEMP/release.jks"
+          fi
+          scripts/build-apk.sh --release --tag "$GITHUB_REF_NAME" --out dist
       - uses: actions/upload-artifact@v4
         with:
           name: dist-linux
@@ -72,6 +86,14 @@ jobs:
           merge-multiple: true
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS
+      - name: Refuse a debug-key APK in a release
+        run: |
+          if compgen -G "dist/*-release-debugkey.apk" >/dev/null; then
+            echo "the release APK is debug-key signed: set CARBONHV_KEYSTORE_BASE64 and" >&2
+            echo "CARBONHV_KEYSTORE_PASSWORD (plus CARBONHV_KEY_ALIAS/CARBONHV_KEY_PASSWORD)" >&2
+            echo "before tagging, or the published APK cannot be updated over." >&2
+            exit 1
+          fi
       - name: Release notes from CHANGELOG.md
         run: |
           version="${GITHUB_REF_NAME#v}"

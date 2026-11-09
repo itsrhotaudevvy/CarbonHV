@@ -6,9 +6,17 @@ bionic/Android needs it, and whether it has been submitted upstream. `build-andr
 
 | Directory | Patches today | Later (plan phase) |
 | --- | --- | --- |
-| `qemu/` | `0001-android-memfd-shm` (no `shm_open`/`librt` on bionic), `0002-libvhost-user-bionic-uapi-headers` | `ui/android.c` frame/input backend (Phase 4/5), `audio/aaudio.c` (Phase 7) |
+| `qemu/` | `0001-android-memfd-shm` (no `shm_open`/`librt` on bionic), `0002-libvhost-user-bionic-uapi-headers`, `0003-ui-add-android-ahb-backend` (`-display android`: frames as `AHardwareBuffer`s, readback mode) | input on the same socket (Phase 5), `audio/aaudio.c` (Phase 7), AHB zero-copy scanout (Phase 6) |
 | `gfxstream/` | `0001-meson-android-host`, `0002-android-ndk-headers-no-x11`, `0003-udmabuf-require-access` | AHB-backed display ColorBuffers for zero-copy (Phase 6) |
 | `rutabaga_gfx/` | `0001-ndk-build-without-aosp-nativewindow`, plus `Cargo.lock` for `cargo build --locked` | — |
 
 QEMU is GPL-2.0. The published source offer for every release that ships the binary must include
 these patches and the exact sources pinned in `../VERSIONS.toml`.
+
+## The frame protocol is tested without QEMU
+
+`ui/android-proto.h` (wire format + the three-slot ring) has no QEMU or Android dependencies, so
+`qualification/emu/frame-proto/run.sh` extracts it from `qemu/0003-*.patch` and tests it with the
+host compiler, against `golden-messages.txt`. The Rust reader
+(`crates/carbon-emu/src/frame_proto.rs`) asserts the same golden bytes, so a change on either side
+of the socket fails in one place. Run it through `scripts/verify.sh`.

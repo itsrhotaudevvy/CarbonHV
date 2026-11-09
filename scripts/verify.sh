@@ -41,6 +41,8 @@ bash -n guest/lineageos/build.sh
 bash -n guest/pixelos/build.sh
 guest/test-aosp-overlay-contract.sh
 bash -n emu/qemu/build-android.sh
+bash -n qualification/emu/frame-proto/run.sh
+bash -n scripts/build-apk.sh
 bash -n qualification/carbon-qualify.sh
 bash -n qualification/test-dry-run.sh
 bash -n qualification/test-adb-probe.sh
@@ -78,6 +80,9 @@ qualification/test-adb-probe.sh
 
 echo "[7/10] Emulated-engine planning"
 emu/qemu/build-android.sh --check
+# The `-display android` frame protocol: the C producer extracted from the QEMU patch, checked
+# against the golden bytes the Rust reader also asserts (crates/carbon-emu frame_proto tests).
+qualification/emu/frame-proto/run.sh
 cargo run -q -p carbon-cli -- emu plan --facts qualification/emu/fixtures/kunzite.json \
   --profile low-memory >/dev/null
 # The measured 2750 MiB reading must be refused for the balanced 2048 MiB profile: the golden
@@ -115,8 +120,12 @@ fi
 export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$repo_root/.gradle-local}"
 ./gradlew --no-daemon :android:domain:test :android:host-contract:test :android:app:testDebugUnitTest
 
-echo "[10/10] Android debug APK"
+echo "[10/10] Android debug and release APKs"
 ./gradlew --no-daemon :android:app:assembleDebug
 test -f android/app/build/outputs/apk/debug/app-debug.apk
+# The release variant must build too. Without CARBONHV_KEYSTORE it is signed with the debug key,
+# which is what makes CI artifacts installable; scripts/build-apk.sh reports which case it is.
+CARBONHV_VERSION_CODE="${CARBONHV_VERSION_CODE:-1}" ./gradlew --no-daemon :android:app:assembleRelease
+test -f android/app/build/outputs/apk/release/app-release.apk
 
 echo "CarbonHV verification: PASS"

@@ -16,7 +16,7 @@ Silicon, and writes `build-android/provenance.txt` (sha256, size, NDK, every pin
 | `VERSIONS.toml` | Exact pins for QEMU, rutabaga/gfxstream, glib, pixman, libslirp, dtc/libfdt, zlib, libffi, pcre2 and the NDK |
 | `build-android.sh` | `--check` (offline, no NDK) and `--build` (cross-compile) |
 | `cross/aarch64-android.ini` | meson cross file for `aarch64-linux-android30` (`minSdk 30`) |
-| `patches/qemu`, `patches/gfxstream`, `patches/rutabaga_gfx` | Android portability today. The two new backends (`ui/android.c`, `audio/aaudio.c`) come in Phases 4 and 7 |
+| `patches/qemu`, `patches/gfxstream`, `patches/rutabaga_gfx` | Android portability, plus `-display android` (`ui/android.c` + `ui/android-proto.h`, Phase 4). The input half of that socket is Phase 5 and `audio/aaudio.c` is Phase 7 |
 
 `patches/<project>/` holds the minimal Android portability patches for QEMU, gfxstream and
 rutabaga_gfx, applied in name order. QEMU is GPL-2.0 and CarbonHV is Apache-2.0; a separately executed
@@ -34,7 +34,8 @@ before a release ships the binary.
   virtio-serial for the console, and vhost-user-vsock.
 - Two CarbonHV backend patches: `ui/android.c` (scanout as `AHardwareBuffer` + `sync_file` to a
   socketpair; see `crates/carbon-emu/src/frame_proto.rs`) and `audio/aaudio.c` (NDK AAudio
-  audiodev).
+  audiodev). `ui/android.c` is in (readback mode) as `patches/qemu/0003-ui-add-android-ahb-backend`
+  and is offered on the command line as `-display android,frame-fd=N`.
 
 ## Verify the pins
 

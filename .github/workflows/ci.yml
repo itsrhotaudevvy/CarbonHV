@@ -54,8 +54,31 @@ jobs:
           GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-local
         run: scripts/verify.sh
 
+      - name: Build release APK
+        env:
+          GRADLE_USER_HOME: ${{ github.workspace }}/.gradle-local
+          CARBONHV_KEYSTORE_BASE64: ${{ secrets.CARBONHV_KEYSTORE_BASE64 }}
+          CARBONHV_KEYSTORE_PASSWORD: ${{ secrets.CARBONHV_KEYSTORE_PASSWORD }}
+          CARBONHV_KEY_ALIAS: ${{ secrets.CARBONHV_KEY_ALIAS }}
+          CARBONHV_KEY_PASSWORD: ${{ secrets.CARBONHV_KEY_PASSWORD }}
+        run: |
+          # A keystore secret is optional; without it the APK is debug-key signed and named so.
+          if [[ -n "$CARBONHV_KEYSTORE_BASE64" ]]; then
+            printf '%s' "$CARBONHV_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+            export CARBONHV_KEYSTORE="$RUNNER_TEMP/release.jks"
+          fi
+          scripts/build-apk.sh --release --out dist
+
       - uses: actions/upload-artifact@v4
         with:
           name: carbonhv-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: carbonhv-release-apk
+          path: |
+            dist/*.apk
+            dist/*.txt
           if-no-files-found: error

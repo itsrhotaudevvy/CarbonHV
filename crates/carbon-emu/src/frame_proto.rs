@@ -500,4 +500,81 @@ mod tests {
             Err(DecodeError::InvalidField("frame.seq"))
         );
     }
+
+    /// The bytes QEMU's `-display android` backend emits for the same messages, pinned by
+    /// `qualification/emu/frame-proto/golden-messages.txt`. The C test in that directory proves
+    /// the producer writes these bytes; this test proves the reader understands them and agrees
+    /// about every field. A change to either side fails here, in one place.
+    #[test]
+    fn agrees_with_the_qemu_golden_messages() {
+        let file = include_str!("../../../qualification/emu/frame-proto/golden-messages.txt");
+        let mut seen = 0;
+
+        for line in file.lines() {
+            if line.starts_with('#') || line.trim().is_empty() {
+                continue;
+            }
+            let (name, hex) = line
+                .split_once(' ')
+                .unwrap_or_else(|| panic!("malformed golden line: {line}"));
+            let bytes: Vec<u8> = (0..hex.len() / 2)
+                .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).expect("hex"))
+                .collect();
+            let expected = match name {
+                "hello" => Message::Hello { version: 1 },
+                "mode_640x480" => Message::Mode {
+                    width: 640,
+                    height: 480,
+                    format: 1,
+                },
+                "mode_1080x2400" => Message::Mode {
+                    width: 1080,
+                    height: 2400,
+                    format: 1,
+                },
+                "frame_seq1" => Message::Frame(FrameDescriptor {
+                    seq: 1,
+                    width: 640,
+                    height: 480,
+                    format: 1,
+                    usage: 0x130,
+                    has_fence: false,
+                }),
+                "frame_seq3_with_fence" => Message::Frame(FrameDescriptor {
+                    seq: 3,
+                    width: 1080,
+                    height: 2400,
+                    format: 1,
+                    usage: 0x130,
+                    has_fence: true,
+                }),
+                "cursor_visible" => Message::Cursor {
+                    x: 12,
+                    y: 34,
+                    visible: true,
+                },
+                "cursor_hidden" => Message::Cursor {
+                    x: 0,
+                    y: 0,
+                    visible: false,
+                },
+                other => panic!("golden message {other} has no expectation in this test"),
+            };
+
+            assert_eq!(bytes.len(), hex.len() / 2, "{name}: odd-length hex");
+            assert_eq!(
+                Message::decode(&bytes, true),
+                Ok(expected.clone()),
+                "{name}: decoder disagrees with the QEMU producer"
+            );
+            assert_eq!(
+                expected.encode(),
+                bytes,
+                "{name}: re-encoding does not reproduce the golden bytes"
+            );
+            seen += 1;
+        }
+
+        assert_eq!(seen, 7, "one or more golden messages were skipped");
+    }
 }
