@@ -1,0 +1,51 @@
+# CarbonHV CVD1 guest kernel fragment for the emulated engine (QEMU TCG on stock Android).
+# Verified by: carbonctl guest kernel-config <family> <base .config> <cvd1-near-native.fragment> <this>
+#
+# These options are safe on a hardware VM too, so one image serves both engines. The point is not
+# to make the guest "fast" — it cannot be, under TCG — but to stop paying for work the emulator
+# charges full price for:
+#
+#  * Fewer timer interrupts means fewer translation-block exits. Android at HZ=250 with NO_HZ_IDLE
+#    is the plan's starting point; measure 100 vs 250 before changing it (Phase 11).
+#  * No guest-side debug options. These are off in production kernels anyway, and under TCG they
+#    multiply the work every allocation does.
+#  * WFI must reach the host so an idle vCPU thread can actually halt, which is what keeps the
+#    phone from heating while a guest sits at the launcher.
+#
+# What this fragment deliberately does NOT do (ADR-014, and the plan's Phase 10 checklist): no
+# mitigation is disabled, KASLR stays on, and init_on_alloc/init_on_free keep zeroing. GrapheneOS
+# enables zeroing and the emulated engine is where its cost is easiest to see — measure it and
+# record it, never remove it.
+
+# Timer behaviour.
+CONFIG_NO_HZ_IDLE=y
+# CONFIG_NO_HZ_FULL is not set
+CONFIG_HZ_250=y
+# CONFIG_HZ_100 is not set
+# CONFIG_HZ_300 is not set
+
+# Idle: the whole benefit of WFI under TCG is that the vCPU thread stops running.
+CONFIG_CPU_IDLE=y
+CONFIG_ARM_PSCI_CPUIDLE=y
+
+# Debug and tracing that would multiply per-operation cost; none of these belong in a shipping
+# guest, emulated or not.
+# CONFIG_KASAN is not set
+# CONFIG_KCSAN is not set
+# CONFIG_LOCKDEP is not set
+# CONFIG_DEBUG_PAGEALLOC is not set
+# CONFIG_PAGE_POISONING is not set
+# CONFIG_SLUB_DEBUG_ON is not set
+# CONFIG_FTRACE is not set
+# CONFIG_DEBUG_INFO is not set
+
+# Pointer authentication stays on: GrapheneOS uses it, and the host side keeps it cheap with
+# pauth-impdef=on rather than by removing the feature from the guest.
+CONFIG_ARM64_PTR_AUTH=y
+CONFIG_ARM64_PTR_AUTH_KERNEL=y
+# BTI is cheap to emulate and is part of the same hardening story.
+CONFIG_ARM64_BTI_KERNEL=y
+
+# Zeroing stays on. Recorded here so nobody "optimises" it away in a later edit.
+CONFIG_INIT_ON_ALLOC_DEFAULT_ON=y
+CONFIG_INIT_ON_FREE_DEFAULT_ON=y

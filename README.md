@@ -173,6 +173,8 @@ It exits 3 for a CVD1 contract gap and 5 for a near-native performance gap. The 
 
 - [Architecture](docs/ARCHITECTURE.md): product and system architecture, including ADRs
 - [Building and verification](docs/BUILDING.md)
+- [Guest image builds in CI](docs/GUEST_BUILDS.md): one repository per guest, what each can
+  actually build today, and why the recipes stay in this tree
 - [Security model](docs/SECURITY.md) and [security policy](SECURITY.md)
 - [Support matrix](docs/SUPPORT_MATRIX.md): what is verified, observed, partial or gated
 - [Controlled host product integration](host/product/README.md), including Snapdragon (Gunyah) hosts
