@@ -115,7 +115,12 @@ check() {
   local checked=0 failed=0 archive recorded actual
   if [[ -d "$downloads_dir" ]]; then
     while IFS= read -r archive; do
-      recorded="$(pins | awk -F '\t' -v name="$(basename "$archive")" 'index($3, name) && $2 == "sha256" { print $3 }')"
+      # The archive belongs to the section whose `url` ends in its file name; compare against
+      # that section's `sha256`.
+      recorded="$(pins | awk -F '\t' -v name="$(basename "$archive")" '
+        $2 == "url" { n = split($3, parts, "/"); if (parts[n] == name) owner = $1 }
+        $2 == "sha256" { hash[$1] = $3 }
+        END { if (owner != "") print hash[owner] }')"
       if [[ -z "$recorded" ]]; then
         echo "  present but unrecorded: $(basename "$archive")" >&2
         failed=1

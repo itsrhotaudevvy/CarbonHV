@@ -416,7 +416,7 @@ Goal: the cheapest possible proof that the whole guest stack (QEMU TCG + `virtio
     -cpu max,pauth-impdef=on,sve=off,sme=off \
     -smp 4 -m 2048 \
     -object memory-backend-memfd,id=mem,size=2048M,share=on -numa node,memdev=mem \
-    -device virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,gfxstream-gles=on,cross-domain=off,hostmem=512M,wsi=surfaceless \
+    -device virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,x-gfxstream-composer=on,cross-domain=off,hostmem=512M,wsi=surfaceless \
     -device virtio-multitouch-pci -device virtio-keyboard-pci \
     -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \
     -audiodev none,id=snd0 -device virtio-sound-pci,audiodev=snd0 \

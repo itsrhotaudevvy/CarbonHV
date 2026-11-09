@@ -189,8 +189,12 @@ pub fn build_plan(
         "-display".into(),
         format!("android,frame-fd={},input-fd={}", fds.frame, fds.input),
         "-device".into(),
+        // Same capsets as the hardware path (`GFXSTREAM_CONTEXT_TYPES` in carbon-broker): the
+        // CVD1 guest renders GLES through ANGLE on Vulkan and composes through the ranchu
+        // composer, so GLES stays off. QEMU 11.1.3 spells the composer and GLES capsets
+        // `x-gfxstream-composer` / `x-gfxstream-gles` (hw/display/virtio-gpu-rutabaga.c).
         format!(
-            "virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,gfxstream-gles=on,cross-domain=off,hostmem={}M,wsi=surfaceless",
+            "virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,x-gfxstream-composer=on,cross-domain=off,hostmem={}M,wsi=surfaceless",
             budget.gfxstream_hostmem_mib
         ),
         "-device".into(),
@@ -435,7 +439,7 @@ mod tests {
         assert!(args.contains(&"max,pauth-impdef=on,sve=off,sme=off".to_string()));
         assert!(args.contains(&"virt,gic-version=3,highmem=on,mte=off".to_string()));
         assert!(args.contains(&"memory-backend-memfd,id=mem,size=2048M,share=on".to_string()));
-        assert!(args.contains(&"virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,gfxstream-gles=on,cross-domain=off,hostmem=512M,wsi=surfaceless".to_string()));
+        assert!(args.contains(&"virtio-gpu-rutabaga-pci,gfxstream-vulkan=on,x-gfxstream-composer=on,cross-domain=off,hostmem=512M,wsi=surfaceless".to_string()));
         assert!(args.contains(&"file=/dev/fdset/0,if=none,id=drive0,format=raw,aio=threads,cache=none,readonly=on".to_string()));
         assert!(args.contains(&"file=/dev/fdset/1,if=none,id=drive1,format=raw,aio=threads,cache=none,discard=unmap,detect-zeroes=unmap".to_string()));
         assert!(args.contains(&"chardev:qmp0".to_string()));

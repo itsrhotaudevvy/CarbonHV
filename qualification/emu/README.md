@@ -20,7 +20,7 @@ engines; only the CPU/graphics transport differs, and the engine is always label
 
 | Gate | State | Blocking evidence |
 | --- | --- | --- |
-| G0 upstream verification (V1–V14) | **Not passed** | V1 (`virtio-gpu-rutabaga` in a pinned build), V7 (exec from `nativeLibraryDir`), V13 (gfxstream on an Android host) are unverified; see the Phase 0 report |
+| G0 upstream verification (V1–V14) | **Not passed** | V1/V3 ✅ from QEMU 11.1.3 source (2026-11-09). V7 (exec from `nativeLibraryDir`) still needs a device; V13 has Soong evidence but no NDK build; V12 (stand-in guest) needs a manual download. See the Phase 0 report |
 | G1 desktop TCG boot | Not started | Needs the AOSP cuttlefish arm64 stand-in guest and a Linux/macOS gfxstream build |
 | G2 Android QEMU binary | Not started | Needs NDK r28+ and the pinned source archives |
 | G3 on-device probes | Not started | Needs the user's consent and the probe APK |

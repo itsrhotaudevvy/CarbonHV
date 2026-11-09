@@ -12,7 +12,7 @@
 # device after the first build (Gate 2): `qemu-system-aarch64 -device help | grep rutabaga`.
 version = "11.1.3"
 url = "https://download.qemu.org/qemu-11.1.3.tar.xz"
-sha256 = ""
+sha256 = "5a8289c7940dc77d3873c81a6c29ba3afe1446fc9d36e77fa1658cdbecb84b22"
 
 [rutabaga_gfx]
 # Must match Cargo.lock's `rutabaga_gfx`, so the guest-visible capsets are identical to the
@@ -23,42 +23,43 @@ crate_sha256 = "2817d168222af3c49269f583dd8e67429912953ae608f715fd97683ed50320a5
 [gfxstream]
 # Matches workspace.metadata.carbonhv.renderer-upstream (Cargo.toml).
 revision = "ebe5b424e15c0816f64b97c9691060333bb43c7e"
+# GitHub snapshot tarballs are not byte-stable; pinned by revision until Gate 2 picks a fetch method.
 sha256 = ""
 
 [glib]
 version = "2.82.4"
 url = "https://download.gnome.org/sources/glib/2.82/glib-2.82.4.tar.xz"
-sha256 = ""
+sha256 = "37dd0877fe964cd15e9a2710b044a1830fb1bd93652a6d0cb6b8b2dff187c709"
 
 [pixman]
 version = "0.44.2"
 url = "https://cairographics.org/releases/pixman-0.44.2.tar.xz"
-sha256 = ""
+sha256 = "50baf820dde0c5ff9714d03d2df4970f606a3d3b1024f5404c0398a9821cc4b0"
 
 [libslirp]
 version = "4.9.1"
 url = "https://gitlab.freedesktop.org/slirp/libslirp/-/archive/v4.9.1/libslirp-v4.9.1.tar.gz"
-sha256 = ""
+sha256 = "3970542143b7c11e6a09a4d2b50f30a133473c41f15ed0bdcc3b7a1c450d9a5c"
 
 [libfdt]
 version = "1.7.2"
 url = "https://git.kernel.org/pub/scm/utils/dtc/dtc.git/snapshot/dtc-1.7.2.tar.gz"
-sha256 = ""
+sha256 = "8f1486962f093f28a2f79f01c1fd82f144ef640ceabe555536d43362212ceb7c"
 
 [zlib]
 version = "1.3.1"
 url = "https://zlib.net/fossils/zlib-1.3.1.tar.gz"
-sha256 = ""
+sha256 = "9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23"
 
 [libffi]
 version = "3.4.6"
 url = "https://github.com/libffi/libffi/releases/download/v3.4.6/libffi-3.4.6.tar.gz"
-sha256 = ""
+sha256 = "b0dea9df23c863a7a50e825440f3ebffabd65df1497108e5d437747843895a4e"
 
 [pcre2]
 version = "10.44"
 url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.44/pcre2-10.44.tar.gz"
-sha256 = ""
+sha256 = "86b9cb0aa3bcb7994faa88018292bc704cdbb708e785f7c74352ff6ea7d3175b"
 
 [ndk]
 # Cross-compile target ABI; NDK r28 or newer (bionic and Vulkan headers must match minSdk 30).
