@@ -110,7 +110,7 @@
  
 --- a/ui/android.c
 +++ b/ui/android.c
-@@ -0,0 +1,425 @@
+@@ -0,0 +1,434 @@
 +/*
 + * CarbonHV: `-display android` — present the guest screen as AHardwareBuffers.
 + *
@@ -144,16 +144,25 @@
 + * honest: a silent AHardwareBuffer renumbering would corrupt every frame. */
 +G_STATIC_ASSERT(ANDROID_AHB_FORMAT_R8G8B8A8_UNORM ==
 +                AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM);
++G_STATIC_ASSERT(ANDROID_AHB_USAGE_CPU_READ_RARELY ==
++                AHARDWAREBUFFER_USAGE_CPU_READ_RARELY);
 +G_STATIC_ASSERT(ANDROID_AHB_USAGE_CPU_WRITE_OFTEN ==
 +                AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN);
 +G_STATIC_ASSERT(ANDROID_AHB_USAGE_GPU_SAMPLED_IMAGE ==
 +                AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE);
 +
-+/* The AHB is described as R8G8B8A8 bytes, which pixman spells differently per host endianness. */
-+#ifdef HOST_BIG_ENDIAN
-+#define ANDROID_DST_PIXMAN_FORMAT PIXMAN_b8g8r8a8
-+#else
++/* The AHB is described as R8G8B8A8 bytes, which pixman spells by bit position rather than by byte
++ * order: a8b8g8r8 is bits a|b|g|r from the top, which on little-endian memory is exactly
++ * R,G,B,A. PIXMAN_r8g8b8a8 is the same word seen from the other end: it writes A,B,G,R, which
++ * the first phone run showed as a black console painted solid red.
++ *
++ * This must be `#if`, not `#ifdef`: QEMU's qemu/compiler.h always *defines* HOST_BIG_ENDIAN,
++ * as `(__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)`, so it is defined even when it is 0 and an
++ * `#ifdef` picks the big-endian branch on every little-endian host, silently. */
++#if HOST_BIG_ENDIAN
 +#define ANDROID_DST_PIXMAN_FORMAT PIXMAN_r8g8b8a8
++#else
++#define ANDROID_DST_PIXMAN_FORMAT PIXMAN_a8b8g8r8
 +#endif
 +
 +typedef struct AndroidDisplay {
@@ -264,7 +273,7 @@
 +        .height = height,
 +        .layers = 1,
 +        .format = AHARDWAREBUFFER_FORMAT_R8G8B8A8_UNORM,
-+        .usage = ANDROID_AHB_USAGE_CPU_WRITE_OFTEN | ANDROID_AHB_USAGE_GPU_SAMPLED_IMAGE,
++        .usage = ANDROID_FRAME_USAGE,
 +    };
 +    AHardwareBuffer *buffer = NULL;
 +
@@ -538,7 +547,7 @@
 +type_init(register_android);
 --- a/ui/android-proto.h
 +++ b/ui/android-proto.h
-@@ -0,0 +1,296 @@
+@@ -0,0 +1,300 @@
 +/*
 + * CarbonHV: frame socket wire format shared with the `:vm` service.
 + *
@@ -585,12 +594,16 @@
 +/* AHardwareBuffer_Format / AHardwareBuffer_UsageFlags values, copied from the NDK so this
 + * header stays host-compilable. ui/android.c asserts they still match the NDK. */
 +#define ANDROID_AHB_FORMAT_R8G8B8A8_UNORM 1u
++#define ANDROID_AHB_USAGE_CPU_READ_RARELY (2u << 0)
 +#define ANDROID_AHB_USAGE_CPU_WRITE_OFTEN (3u << 4)
 +#define ANDROID_AHB_USAGE_GPU_SAMPLED_IMAGE (1u << 8)
-+/* What the reader is allowed to do with a readback frame: sample it as a texture. Likewise the
-+ * writer: QEMU only ever locks it through the CPU. */
++/* What a frame is allocated as: written often by the CPU (QEMU's readback), sampled by the GPU
++ * (the app's renderer), and readable rarely by the CPU. The read flag costs nothing on this
++ * hardware and is what makes screenshots and on-device diagnostics possible without a second
++ * buffer: a buffer allocated with CPU_READ_NEVER cannot be locked for reading at all. */
 +#define ANDROID_FRAME_USAGE \
-+    ((uint64_t)(ANDROID_AHB_USAGE_CPU_WRITE_OFTEN | ANDROID_AHB_USAGE_GPU_SAMPLED_IMAGE))
++    ((uint64_t)(ANDROID_AHB_USAGE_CPU_READ_RARELY | ANDROID_AHB_USAGE_CPU_WRITE_OFTEN | \
++                ANDROID_AHB_USAGE_GPU_SAMPLED_IMAGE))
 +
 +/* The ring depth QEMU keeps per display mode. Mirrors the app's backpressure: never reuse a
 + * buffer that has not been RELEASEd, and drop the frame rather than block a vCPU. */

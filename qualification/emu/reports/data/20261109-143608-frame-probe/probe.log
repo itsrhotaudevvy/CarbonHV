@@ -1,0 +1,16 @@
+spawned qemu pid=8350 frame-fd=3
+libqemu_system_aarch64.so:cursor 0,0 visible=0
+hello version=1
+ info: android display: frame socket on fd 3, readback presentation
+mode 640x480 format=1
+frame seq=1 640x480 1228800 bytes -> frame-00001-640x480.rgba
+frame seq=2 640x480 1228800 bytes -> frame-00002-640x480.rgba
+mode 1280x800 format=1
+frame seq=1 1280x800 4096000 bytes -> frame-00001-1280x800.rgba
+frame seq=2 1280x800 4096000 bytes -> frame-00002-1280x800.rgba
+frame seq=3 1280x800 4096000 bytes -> frame-00003-1280x800.rgba
+frame seq=4 1280x800 4096000 bytes -> frame-00004-1280x800.rgba
+frame seq=5 1280x800 4096000 bytes -> frame-00005-1280x800.rgba
+frame seq=6 1280x800 4096000 bytes -> frame-00006-1280x800.rgba
+frame seq=7 1280x800 4096000 bytes -> frame-00007-1280x800.rgba
+frame seq=8 1280x800 4096000 bytes -> frame-00008-1280x800.rgba

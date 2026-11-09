@@ -42,6 +42,14 @@ bash -n guest/pixelos/build.sh
 guest/test-aosp-overlay-contract.sh
 bash -n emu/qemu/build-android.sh
 bash -n qualification/emu/frame-proto/run.sh
+# The device probe cannot run here (it needs the phone), but it must compile: it reads the same
+# ui/android-proto.h, extracted from the patch, so a drift between the two shows up as a build
+# failure rather than as a wrong frame on the device.
+if [[ -n "${ANDROID_NDK_HOME:-}" ]]; then
+  qualification/emu/device-frame-probe/build.sh >/dev/null
+fi
+bash -n qualification/emu/device-frame-probe/build.sh
+bash -n qualification/emu/device-frame-probe/run-on-phone.sh
 bash -n scripts/build-apk.sh
 bash -n qualification/carbon-qualify.sh
 bash -n qualification/test-dry-run.sh

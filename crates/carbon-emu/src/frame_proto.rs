@@ -537,7 +537,7 @@ mod tests {
                     width: 640,
                     height: 480,
                     format: 1,
-                    usage: 0x130,
+                    usage: 0x132,
                     has_fence: false,
                 }),
                 "frame_seq3_with_fence" => Message::Frame(FrameDescriptor {
@@ -545,7 +545,7 @@ mod tests {
                     width: 1080,
                     height: 2400,
                     format: 1,
-                    usage: 0x130,
+                    usage: 0x132,
                     has_fence: true,
                 }),
                 "cursor_visible" => Message::Cursor {

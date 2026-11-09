@@ -20,3 +20,6 @@ emu/qemu/build-android/
 android/emu/src/main/jniLibs/
 qualification/emu/probe-app/src/main/jniLibs/
 qualification/emu/probe-app/build/
+
+# Frame dumps from the device probe: multi-megabyte raw pixels. The PNGs and logs are kept.
+qualification/emu/reports/data/**/*.rgba
