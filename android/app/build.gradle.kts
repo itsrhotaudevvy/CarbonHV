@@ -69,11 +69,14 @@ android {
     sourceSets {
         named("main") {
             aidl.srcDir("../../host/android/aidl/ui")
+            jniLibs.srcDir("../emu/src/main/jniLibs")
         }
     }
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        // QEMU must be an extracted .so: untrusted apps may execute only from nativeLibraryDir.
+        jniLibs.useLegacyPackaging = true
     }
 }
 

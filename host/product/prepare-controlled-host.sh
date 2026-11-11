@@ -121,6 +121,8 @@ rsync -a --delete \
   --exclude 'target/' \
   --exclude 'captures/' \
   --exclude 'dist/' \
+  --exclude 'emu/' \
+  --exclude 'qualification/' \
   --exclude 'local.properties' \
   --exclude '.DS_Store' \
   "$repo_root/" "$stage_root/"
