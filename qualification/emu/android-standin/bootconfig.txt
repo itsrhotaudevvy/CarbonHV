@@ -36,7 +36,9 @@ androidboot.serialno=CARBONHVSTANDIN01
 androidboot.ddr_size=3072MB
 androidboot.lcd_density=320
 androidboot.setupwizard_mode=DISABLED
-androidboot.enable_bootanimation=1
+# Cuttlefish's own switch for the boot animation. Off here: the animation is drawn by SwiftShader
+# on an emulated CPU, so it takes cycles from the boot it is only meant to display.
+androidboot.enable_bootanimation=0
 androidboot.enable_confirmationui=0
 androidboot.audio.tinyalsa.ignore_output=true
 androidboot.audio.tinyalsa.simulate_input=true
@@ -64,6 +66,12 @@ androidboot.openthread_node_id=1
 # here (no vsock device on an unrooted phone); the bind only has to succeed.
 androidboot.vsock_lights_port=6900
 androidboot.vsock_lights_cid=3
+# Cuttlefish passes the modem simulator's vsock port (instance.modem_simulator_ports()). The guest
+# RIL (com.google.cf.rild, radio-service.cf) exits with "'ro.boot.modem_simulator_ports' must be an
+# integer vsock port for the modem simulator" without it, and init restarts it every ~5 s, which
+# costs emulated CPU and sets sys.init.updatable_crashing (seen 2026-11-12). No modem simulator
+# runs here; the value only has to parse.
+androidboot.modem_simulator_ports=9600
 # The vendor partition has no com.google.cf.vulkan.swiftshader APEX, so assemble_cvd would not
 # set androidboot.vendor.apex.com.google.cf.vulkan either.
 

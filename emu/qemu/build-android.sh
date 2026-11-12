@@ -292,6 +292,7 @@ build_qemu() {
       --host-cc=/usr/bin/cc --cpu=aarch64 --target-list=aarch64-softmmu \
       --without-default-features --enable-tcg --enable-slirp --enable-fdt=system --enable-pixman \
       --enable-rutabaga-gfx --enable-vhost-user --disable-docs --disable-werror \
+      --disable-qom-cast-debug --disable-debug-info -Dbuildtype=release -Db_ndebug=false \
       --extra-cflags="-I$deps_dir/include" --extra-ldflags="-L$deps_dir/lib" \
       >"$build_dir/log/qemu.configure.log" 2>&1) \
     || { tail -40 "$build_dir/log/qemu.configure.log" >&2; exit 1; }
@@ -333,8 +334,8 @@ build() {
   export AR=llvm-ar
   export RANLIB=llvm-ranlib
   export STRIP=llvm-strip
-  export CFLAGS="-fPIC -O2"
-  export CXXFLAGS="-fPIC -O2"
+  export CFLAGS="-fPIC -O2 -mtune=cortex-a78"
+  export CXXFLAGS="-fPIC -O2 -mtune=cortex-a78"
 
   check
 

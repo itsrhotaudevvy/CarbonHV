@@ -5,7 +5,7 @@
 #
 #   qualification/emu/android-standin/run-on-phone.sh \
 #       --bundle /tmp/standin/carbonhv-guest-android-standin-16644040 \
-#       [--serial 8b227126] [--memory 3072] [--vcpus 6] [--frames 60] [--interval 30] \
+#       [--serial 8b227126] [--memory 3072] [--vcpus 4] [--frames 60] [--interval 30] \
 #       [--seconds 5400] [--keep-disk] [--viewer]
 #
 # --viewer runs the guest inside the qualification viewer app (qualification/emu/viewer-app,
@@ -34,7 +34,10 @@ repo_root="$(cd "$here/../../.." && pwd)"
 serial="8b227126"
 bundle=""
 memory=3072
-vcpus=6
+# Four vCPUs, not six: under MTTCG each vCPU is a host thread, and the Snapdragon 6 Gen 3 has only
+# four Cortex-A78 big cores (cpus 4-7). Extra vCPU threads can be scheduled onto the A55 little cores
+# (1.8GHz), while the guest scheduler treats all vCPUs as equal, so slow vCPUs drag the boot down.
+vcpus=4
 frames=60
 interval=30
 seconds=5400
@@ -96,7 +99,10 @@ qemu_args=(
   -name guest=carbonhv-android-standin,debug-threads=on
   -machine virt,gic-version=3,highmem=on,usb=off
   -accel tcg,thread=multi,tb-size=512
-  -cpu max,pauth-impdef=on
+  # `max` advertises SVE/SVE2/SME, which TCG emulates slowly, and Android will use them when present.
+  # sve=off,sme=off drops all of them (QEMU docs: sve=off alone leaves SME on). pauth stays on, and
+  # pauth-impdef selects QEMU's fast non-QARMA pointer-auth algorithm, which is cheap under TCG.
+  -cpu max,sve=off,sme=off,pauth-impdef=on
   -smp "$vcpus"
   -m "$memory"
   -nodefaults -no-user-config -no-reboot
