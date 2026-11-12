@@ -313,6 +313,61 @@ static void check_ring(void)
     CHECK_EQ_U32(seq, 1);
 }
 
+static void check_damage_rect(const AndroidDamage *d, uint32_t x, uint32_t y,
+                              uint32_t w, uint32_t h)
+{
+    CHECK_EQ_U32(d->x, x);
+    CHECK_EQ_U32(d->y, y);
+    CHECK_EQ_U32(d->w, w);
+    CHECK_EQ_U32(d->h, h);
+}
+
+static void check_damage(void)
+{
+    AndroidDamage d = { 0, 0, 0, 0 };
+    CHECK(android_damage_empty(&d));
+    android_damage_add(&d, 100, 80, 10, 20);
+    check_damage_rect(&d, 100, 80, 10, 20);
+
+    /* Disjoint updates expand the far edge as well as the near edge. */
+    android_damage_add(&d, 200, 130, 5, 10);
+    check_damage_rect(&d, 100, 80, 105, 60);
+    android_damage_add(&d, 80, 60, 10, 10);
+    check_damage_rect(&d, 80, 60, 125, 80);
+
+    /* Contained and zero-area updates cannot change the union. */
+    android_damage_add(&d, 60, 35, 2, 4);
+    check_damage_rect(&d, 60, 35, 145, 105);
+    android_damage_add(&d, 1000, 0, 0, 0);
+    check_damage_rect(&d, 60, 35, 145, 105);
+
+    /* Clip to the scanout; a rect wholly outside becomes empty. */
+    android_damage_clip(&d, 100, 100);
+    check_damage_rect(&d, 60, 35, 40, 65);
+    d = (AndroidDamage) { 30, 40, 1, 1 };
+    android_damage_clip(&d, 10, 30);
+    CHECK(android_damage_empty(&d));
+
+    /* A slot must absorb updates from ticks on which another slot was captured. Slot 1's
+     * union must retain the update before its own capture as well as the next one. */
+    android_damage_add(&d, 10, 20, 4, 6);
+    android_damage_add(&d, 100, 200, 1, 3);
+    check_damage_rect(&d, 10, 20, 91, 183);
+    android_damage_clear(&d);
+    CHECK(android_damage_empty(&d));
+
+    /* An out-of-bounds callback is clipped before it is accumulated into a slot. */
+    d = (AndroidDamage) { 0, 0, 0, 0 };
+    android_damage_add(&d, 95, 90, 20, 30);
+    android_damage_clip(&d, 100, 100);
+    check_damage_rect(&d, 95, 90, 5, 10);
+
+    /* Zero-area input is not used to reset or replace a pending union. */
+    d = (AndroidDamage) { 20, 30, 5, 5 };
+    android_damage_union(&d, &d, &(AndroidDamage) { 200, 30, 0, 0 });
+    check_damage_rect(&d, 20, 30, 5, 5);
+}
+
 int main(int argc, char **argv)
 {
     Golden golden[16];
@@ -328,6 +383,7 @@ int main(int argc, char **argv)
     check_golden_file(path, golden, count);
     check_reader();
     check_ring();
+    check_damage();
 
     if (failures) {
         fprintf(stderr, "android-proto: %d of %d checks failed\n", failures, checks);

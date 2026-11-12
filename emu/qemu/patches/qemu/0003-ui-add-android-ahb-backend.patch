@@ -110,7 +110,7 @@
  
 --- a/ui/android.c
 +++ b/ui/android.c
-@@ -0,0 +1,434 @@
+@@ -0,0 +1,497 @@
 +/*
 + * CarbonHV: `-display android` — present the guest screen as AHardwareBuffers.
 + *
@@ -174,6 +174,11 @@
 +    DisplaySurface *surface;
 +    AndroidFrameRing ring;
 +    AHardwareBuffer *buffer[ANDROID_RING_SLOTS];
++    /* Per-slot damage: the union of guest updates since this slot was last captured. A slot
++     * reused after N frames must absorb all of them, not just the last refresh tick's. `full`
++     * forces a whole-buffer copy (fresh allocation, mode change, or surface switch). */
++    AndroidDamage damage[ANDROID_RING_SLOTS];
++    bool full[ANDROID_RING_SLOTS];
 +    uint32_t width;
 +    uint32_t height;
 +    uint32_t format;
@@ -210,21 +215,36 @@
 +            AHardwareBuffer_release(ad->buffer[i]);
 +            ad->buffer[i] = NULL;
 +        }
++        android_damage_clear(&ad->damage[i]);
++        ad->full[i] = true;
 +    }
 +}
 +
-+/* Converts the scanout surface into `buffer`, row by row, with a pixman blit. */
++/* Converts just `rect` of the scanout surface into `buffer`. An empty rect means the buffer
++ * already matches the surface and nothing is copied. The rect is also passed to the lock so
++ * gralloc's cache maintenance is bounded to the region actually written, not the whole buffer.
++ * The lock returns the buffer's base address regardless of the rect, so offsets are absolute. */
 +static bool android_capture(AndroidDisplay *ad, AHardwareBuffer *buffer,
-+                            uint32_t width, uint32_t height)
++                            uint32_t width, uint32_t height, const AndroidDamage *rect)
 +{
++    ARect lock_rect;
 +    int32_t bytes_per_pixel = 0;
 +    int32_t bytes_per_stride = 0;
 +    uint8_t *dst = NULL;
 +    int rc;
 +
++    if (android_damage_empty(rect)) {
++        return true;
++    }
++
++    lock_rect.left = (int32_t)rect->x;
++    lock_rect.top = (int32_t)rect->y;
++    lock_rect.right = (int32_t)(rect->x + rect->w);
++    lock_rect.bottom = (int32_t)(rect->y + rect->h);
++
 +    rc = AHardwareBuffer_lockAndGetInfo(buffer,
 +                                        AHARDWAREBUFFER_USAGE_CPU_WRITE_OFTEN,
-+                                        -1, NULL, (void **)&dst,
++                                        -1, &lock_rect, (void **)&dst,
 +                                        &bytes_per_pixel, &bytes_per_stride);
 +    if (rc != 0) {
 +        ad->lock_failures++;
@@ -234,13 +254,15 @@
 +    if (surface_format(ad->surface) == ANDROID_DST_PIXMAN_FORMAT &&
 +        surface_stride(ad->surface) == bytes_per_stride &&
 +        bytes_per_stride == (int32_t)width * 4) {
-+        /* Already the layout the reader wants: one row-wise copy with no conversion. */
++        /* Already the layout the reader wants: copy only the damaged rows and columns. */
 +        uint32_t y;
 +        const uint8_t *src = surface_data(ad->surface);
++        size_t col_off = (size_t)rect->x * 4;
++        size_t row_bytes = (size_t)rect->w * 4;
 +
-+        for (y = 0; y < height; y++) {
-+            memcpy(dst + (size_t)y * bytes_per_stride, src + (size_t)y * bytes_per_stride,
-+                   (size_t)width * 4);
++        for (y = rect->y; y < rect->y + rect->h; y++) {
++            memcpy(dst + (size_t)y * bytes_per_stride + col_off,
++                   src + (size_t)y * bytes_per_stride + col_off, row_bytes);
 +        }
 +    } else {
 +        pixman_image_t *target;
@@ -258,7 +280,9 @@
 +            return false;
 +        }
 +        pixman_image_composite32(PIXMAN_OP_SRC, ad->surface->image, NULL, target,
-+                                 0, 0, 0, 0, 0, 0, width, height);
++                                 (int)rect->x, (int)rect->y, 0, 0,
++                                 (int)rect->x, (int)rect->y,
++                                 (int)rect->w, (int)rect->h);
 +        pixman_image_unref(target);
 +    }
 +
@@ -306,6 +330,7 @@
 +    uint32_t index = 0;
 +    uint32_t seq = 0;
 +    uint32_t width, height;
++    AndroidDamage rect;
 +    size_t len;
 +
 +    if (!ad->surface || ad->broken) {
@@ -340,12 +365,27 @@
 +            ad->frames_dropped++;
 +            return;
 +        }
++        /* A new allocation has no valid pixels to preserve. */
++        ad->full[index] = true;
 +    }
 +
-+    if (!android_capture(ad, ad->buffer[index], width, height)) {
++    if (ad->full[index]) {
++        rect.x = 0;
++        rect.y = 0;
++        rect.w = width;
++        rect.h = height;
++    } else {
++        rect = ad->damage[index];
++        android_damage_clip(&rect, width, height);
++    }
++
++    if (!android_capture(ad, ad->buffer[index], width, height, &rect)) {
++        /* Keep this slot's damage: without a successful capture its contents are still stale. */
 +        android_ring_release(&ad->ring, seq);
 +        return;
 +    }
++    android_damage_clear(&ad->damage[index]);
++    ad->full[index] = false;
 +
 +    len = android_proto_frame(message, seq, width, height, ad->format,
 +                              ANDROID_FRAME_USAGE, false);
@@ -432,14 +472,37 @@
 +                    surface_height(surface) != ad->height)) {
 +        ad->mode_valid = false;
 +    }
++    /* Every existing slot predates this surface, including slots still with the app. */
++    for (size_t i = 0; i < ANDROID_RING_SLOTS; i++) {
++        android_damage_clear(&ad->damage[i]);
++        ad->full[i] = true;
++    }
 +    ad->dirty = true;
 +}
 +
 +static void android_update(DisplayChangeListener *dcl, int x, int y, int w, int h)
 +{
-+    if (android_display) {
-+        android_display->dirty = true;
++    AndroidDisplay *ad = android_display;
++    size_t i;
++
++    if (!ad || ad->broken || !ad->surface || w <= 0 || h <= 0) {
++        return;
 +    }
++
++    /* The same update must reach every slot: each one has been idle for a different number
++     * of refresh ticks. Clip here so callbacks cannot leave an out-of-surface lock rect. */
++    for (i = 0; i < ANDROID_RING_SLOTS; i++) {
++        AndroidDamage update = {
++            .x = (uint32_t)MAX(x, 0),
++            .y = (uint32_t)MAX(y, 0),
++            .w = (uint32_t)w,
++            .h = (uint32_t)h,
++        };
++        android_damage_clip(&update, surface_width(ad->surface),
++                            surface_height(ad->surface));
++        android_damage_union(&ad->damage[i], &ad->damage[i], &update);
++    }
++    ad->dirty = true;
 +}
 +
 +static void android_mouse_set(DisplayChangeListener *dcl, int x, int y, bool on)
@@ -547,7 +610,7 @@
 +type_init(register_android);
 --- a/ui/android-proto.h
 +++ b/ui/android-proto.h
-@@ -0,0 +1,300 @@
+@@ -0,0 +1,381 @@
 +/*
 + * CarbonHV: frame socket wire format shared with the `:vm` service.
 + *
@@ -845,6 +908,87 @@
 +        }
 +    }
 +    return false;
++}
++
++/*
++ * Damage-rect math for the readback path (ui/android.c). A rect is {x, y, w, h} in pixels; it is
++ * empty when w == 0 || h == 0. The backend keeps one rect per ring slot: a slot reused after N
++ * frames must absorb every update since *its own* last capture, not just the last refresh tick,
++ * so each slot accumulates its own union. Copying only that rect instead of the whole scanout is
++ * what keeps a mostly-static guest (a blinking cursor, a clock) from paying a full-frame convert
++ * on every 30 ms tick. Kept here, free of QEMU and Android headers, so the host test exercises the
++ * union/clip bookkeeping the same way it exercises the ring. Dimensions are bounded by
++ * ANDROID_PROTO_MAX_DIMENSION, so the x+w sums below cannot overflow uint32_t.
++ */
++typedef struct AndroidDamage {
++    uint32_t x, y, w, h;
++} AndroidDamage;
++
++static inline void android_damage_clear(AndroidDamage *d)
++{
++    d->x = d->y = d->w = d->h = 0;
++}
++
++static inline bool android_damage_empty(const AndroidDamage *d)
++{
++    return d->w == 0 || d->h == 0;
++}
++
++/* Bounding-box union of two rects; either may be empty. */
++static inline void android_damage_union(AndroidDamage *dst, const AndroidDamage *a,
++                                        const AndroidDamage *b)
++{
++    uint32_t x0, y0, x1, y1;
++
++    if (android_damage_empty(a)) {
++        *dst = *b;
++        return;
++    }
++    if (android_damage_empty(b)) {
++        *dst = *a;
++        return;
++    }
++    x0 = a->x < b->x ? a->x : b->x;
++    y0 = a->y < b->y ? a->y : b->y;
++    x1 = (a->x + a->w) > (b->x + b->w) ? (a->x + a->w) : (b->x + b->w);
++    y1 = (a->y + a->h) > (b->y + b->h) ? (a->y + a->h) : (b->y + b->h);
++    dst->x = x0;
++    dst->y = y0;
++    dst->w = x1 - x0;
++    dst->h = y1 - y0;
++}
++
++/* In-place union of a rect into d. A zero-area rect is a no-op. */
++static inline void android_damage_add(AndroidDamage *d, uint32_t x, uint32_t y,
++                                      uint32_t w, uint32_t h)
++{
++    AndroidDamage r = { x, y, w, h };
++
++    android_damage_union(d, d, &r);
++}
++
++/* Clip d to a width x height surface; a rect fully outside becomes empty. */
++static inline void android_damage_clip(AndroidDamage *d, uint32_t width, uint32_t height)
++{
++    uint32_t x1, y1;
++
++    if (android_damage_empty(d)) {
++        return;
++    }
++    if (d->x >= width || d->y >= height) {
++        android_damage_clear(d);
++        return;
++    }
++    x1 = d->x + d->w;
++    y1 = d->y + d->h;
++    if (x1 > width) {
++        x1 = width;
++    }
++    if (y1 > height) {
++        y1 = height;
++    }
++    d->w = x1 - d->x;
++    d->h = y1 - d->y;
 +}
 +
 +#endif /* UI_ANDROID_PROTO_H */
