@@ -23,10 +23,12 @@
 #include <jni.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "ui/android-proto.h"
@@ -47,10 +49,13 @@ static int g_logged_failures;
 
 static void note_failure(const char *why, uint32_t seq);
 
-/* Copies one locked frame into the window. Caller holds g_lock and has a window. */
-static void show(const uint8_t *src, uint32_t stride_px, uint32_t width, uint32_t height)
+/* Locks the window's back buffer and copies one frame into it. Returns false if the window could
+ * not be locked; on true the caller must ANativeWindow_unlockAndPost. Caller holds g_lock and has
+ * a window. Copy is split from post so the frame's ring slot can be RELEASEd after the copy but
+ * before the post, which may block on SurfaceFlinger. */
+static bool window_copy(const uint8_t *src, uint32_t stride_px, uint32_t width, uint32_t height,
+                        ANativeWindow_Buffer *out)
 {
-    ANativeWindow_Buffer out;
     uint32_t rows, cols, y;
 
     if (g_window_w != width || g_window_h != height) {
@@ -60,18 +65,28 @@ static void show(const uint8_t *src, uint32_t stride_px, uint32_t width, uint32_
         g_window_w = width;
         g_window_h = height;
     }
-    if (ANativeWindow_lock(g_window, &out, NULL) != 0) {
+    if (ANativeWindow_lock(g_window, out, NULL) != 0) {
         note_failure("ANativeWindow_lock failed", 0);
-        return;
+        return false;
     }
-    rows = height < (uint32_t)out.height ? height : (uint32_t)out.height;
-    cols = width < (uint32_t)out.width ? width : (uint32_t)out.width;
+    rows = height < (uint32_t)out->height ? height : (uint32_t)out->height;
+    cols = width < (uint32_t)out->width ? width : (uint32_t)out->width;
     for (y = 0; y < rows; y++) {
-        memcpy((uint8_t *)out.bits + (size_t)y * (size_t)out.stride * 4,
+        memcpy((uint8_t *)out->bits + (size_t)y * (size_t)out->stride * 4,
                src + (size_t)y * stride_px * 4, (size_t)cols * 4);
     }
-    ANativeWindow_unlockAndPost(g_window);
-    g_shown++;
+    return true;
+}
+
+/* Copies one locked frame into the window and posts it. Caller holds g_lock and has a window. */
+static void show(const uint8_t *src, uint32_t stride_px, uint32_t width, uint32_t height)
+{
+    ANativeWindow_Buffer out;
+
+    if (window_copy(src, stride_px, width, height, &out)) {
+        ANativeWindow_unlockAndPost(g_window);
+        g_shown++;
+    }
 }
 
 /* Redraws the kept frame on the current window. Caller holds g_lock. */
@@ -80,6 +95,47 @@ static void show_last(void)
     if (g_window && g_last) {
         show(g_last, g_last_w, g_last_w, g_last_h);
     }
+}
+
+static int64_t now_ns(void)
+{
+    struct timespec ts;
+
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000000 + ts.tv_nsec;
+}
+
+/* The kept heap frame exists only so a surface that attaches later shows the guest at once. While
+ * a surface is attached it is refreshed at most twice a second; while none is, every frame is kept.
+ * This removes the second full-frame copy from the steady-state present path. Caller holds g_lock
+ * and the frame's AHardwareBuffer is locked. */
+#define SNAPSHOT_INTERVAL_NS 500000000LL
+static int64_t g_last_snapshot_ns;
+
+static void snapshot(const uint8_t *src, uint32_t stride_px, uint32_t width, uint32_t height)
+{
+    size_t row = (size_t)width * 4;
+    uint8_t *copy;
+    uint32_t y;
+    int64_t now = now_ns();
+
+    if (g_window && g_last && g_last_w == width && g_last_h == height &&
+        now - g_last_snapshot_ns < SNAPSHOT_INTERVAL_NS) {
+        return;
+    }
+    copy = (g_last && g_last_w == width && g_last_h == height)
+               ? g_last
+               : realloc(g_last, row * height);
+    if (!copy) {
+        return;
+    }
+    for (y = 0; y < height; y++) {
+        memcpy(copy + y * row, src + (size_t)y * stride_px * 4, row);
+    }
+    g_last = copy;
+    g_last_w = width;
+    g_last_h = height;
+    g_last_snapshot_ns = now;
 }
 
 static void note_failure(const char *why, uint32_t seq)
@@ -222,6 +278,7 @@ JNIEXPORT jlong JNICALL Java_dev_carbonhv_emuviewer_Native_present(JNIEnv *env, 
             uint32_t width = android_get_u32(payload + 4);
             uint32_t height = android_get_u32(payload + 8);
             AHardwareBuffer *buffer = NULL;
+            bool released = false;
 
             /* The handle is its own datagram and must be consumed even if it is not shown. */
             if (AHardwareBuffer_recvHandleFromUnixSocket(fd, &buffer) == 0 && buffer) {
@@ -236,32 +293,33 @@ JNIEXPORT jlong JNICALL Java_dev_carbonhv_emuviewer_Native_present(JNIEnv *env, 
                                                 NULL, &src) != 0) {
                     note_failure("AHardwareBuffer_lock failed", seq);
                 } else {
-                    size_t row = (size_t)width * 4;
-                    uint8_t *copy = (g_last && g_last_w == width && g_last_h == height)
-                                        ? g_last
-                                        : realloc(g_last, row * height);
-                    if (copy) {
-                        uint32_t y;
-                        for (y = 0; y < height; y++) {
-                            memcpy(copy + y * row, (const uint8_t *)src + (size_t)y * desc.stride * 4,
-                                   row);
-                        }
-                        g_last = copy;
-                        g_last_w = width;
-                        g_last_h = height;
+                    ANativeWindow_Buffer out;
+                    bool locked = false;
+
+                    /* One copy, straight into the window. The kept heap frame is throttled. */
+                    snapshot((const uint8_t *)src, desc.stride, width, height);
+                    if (g_window) {
+                        locked = window_copy((const uint8_t *)src, desc.stride, width, height, &out);
+                    } else {
+                        note_failure("no surface attached yet (kept for when one is)", seq);
                     }
                     AHardwareBuffer_unlock(buffer, NULL);
-                    if (!g_window) {
-                        note_failure("no surface attached yet (kept for when one is)", seq);
-                    } else {
-                        show_last();
+                    /* The pixels are out of the buffer: free QEMU's ring slot now, before the
+                     * post, which can block on SurfaceFlinger. */
+                    release(fd, seq);
+                    released = true;
+                    if (locked) {
+                        ANativeWindow_unlockAndPost(g_window);
+                        g_shown++;
                     }
                 }
                 pthread_mutex_unlock(&g_lock);
                 AHardwareBuffer_release(buffer);
             }
             g_received++;
-            release(fd, seq);
+            if (!released) {
+                release(fd, seq);
+            }
         }
     }
     close(fd);
